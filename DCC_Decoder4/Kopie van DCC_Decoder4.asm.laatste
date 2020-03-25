@@ -1,0 +1,845 @@
+;-------------------------------------------------------------------
+;--- Een Digital Accessory Decoder voor de trein-modelbouw
+;---
+;---	CK = 7.372800 MHz
+;---	TCK = CK/8
+;---	DCC protocol: "1" duur tussen 52us - 64us, "0" duur tussen 90us - 10000us (10ms)
+;---
+;---	          __    __
+;---	         |  |  |  |  |
+;---	         |pB|  |  |  |
+;---	------+--+  +--+  +--+
+;---	      .pA.  .  .  .  .      pA = periode A
+;---	      .  .  .  .  .  .      pB = periode B
+;---	      ....  ....  ....	     . = signaal door booster gemaakt
+;---
+;---	         *     *     *       * = verwerk periode A
+;---	      #     #     #          # = verwerk periode B
+;---
+;-------------------------------------------------------------------
+
+;--- Accessory Decoder packet DCCByte2 (1AAACDDD)
+;---		DD D bits                     DD D bits
+;---				 +-------------+
+;---		00 0/	-|B0         A0|-	\ 00 0
+;---		   1\	-|B1         A1|-	/    1
+;---		01 0/	-|B2         A2|-	\ 01 0
+;---		   1\	-|B3         A3|-	/    1
+;---		10 0/	-|B4         A4|-	\ 10 0
+;---		   1\	-|B5         A5|-	/    1
+;---		11 0/	-|B6         A6|-	\ 11 0
+;---		   1\	-|B7         A7|-	/    1
+;---				 |             |		
+;---				 |             |		
+;---				 |             |		
+;---				 |           C7|-	\ 11 1
+;---				 |           C6|-	/    0
+;---				 |D0         C5|-	\ 10 1
+;---				 |D1         C4|-	/    0
+;---				 |D2         C3|-	\ 01 1
+;---				 |D3         C2|-	/    0
+;---	[Error LED]	-|D4         C1|-	\ 00 1
+;---	  [Bit LED]	-|D5         C0|-	/    0
+;---			DCC	-|D6         D7|
+;---				 +-------------+		
+;---
+;---	Onze AVR wissel-decoder heeft 3 poorten: A,B & C met elk 8 wissels.
+;---	Poort A beslaat DCC wissel-adres: DCC_BaseAddress + 0
+;---	Poort B beslaat DCC wissel-adres: DCC_BaseAddress + 1
+;---	Poort C beslaat DCC wissel-adres: DCC_BaseAddress + 2
+;---
+;--- Als een wissel wordt aangestuurd (bv. op GA adres DCC_BaseAddress met DDD=00x, dus PA0-PA1), 
+;--- worden de 2 pins beide aangestuurd met een omgekeerd signaal (bv. PA0 op 1 & PA1 op 0, of net andersom).
+;--- Bit 0 van DCCByte2 (1AAACDDD) is niet van betekenis bij het gebruik van wissels, want wissels
+;--- gebruiken elk een paar outputs.
+;-------------------------------------------------------------------
+
+;--- Configuration Variables voor Accessory Decoders:
+;--- VERPLICHT
+;---	Decoder Address LSB					513		6 LSB of accessory decoder address
+;---	Decoder Address MSB					521		3 MSB of accessory decoder address
+;---	Manufacturer Version Info			519		Manufacturer defined version info (READONLY)
+;---	Manufacturer ID						520		Values assigned by NMRA (READONLY)
+;---	Accessory Decoder Configuration		541		similar to CV#29 (Configuration Data #1); for acc. decoders
+;--- OPTIONEEL
+;---	Auxiliary Activation				514		Auxiliary activation of outputs
+;---	Time On F1							515
+;---	Time On F2							516
+;---	Time On F3							517
+;---	Time On F4							518
+;-------------------------------------------------------------------
+
+
+;---------------------------------------
+; Een Basic Accessory Decoder packet is 3 bytes groot.
+; Een Extended packet is 3 t/m 6 bytes groot.
+; Packets 1e byte Adres bereiken:
+;	00000000			(0)						Broadcast address
+;	00000001-01111111	(1-127)(inclusive)		Multi-Function decoders with 7 bit addresses
+;	10000000-10111111	(128-191)(inclusive)	Basic Accessory Decoders with 9 bit addresses and
+;												Extended Accessory Decoders with 11-bit addresses
+;	11000000-11100111	(192-231)(inclusive)	Multi Function Decoders with 14 bit addresses
+;	11101000-11111110	(232-254)(inclusive)	Reserved for Future Use
+;	11111111			(255)					Idle Packet
+;---------------------------------------
+;* {instruction-bytes} declaraties: C = instruction bit, D = data bit
+; {instruction-bytes} =	CCCDDDDD,
+;						CCCDDDDD 0 DDDDDDDD, or
+;						CCCDDDDD 0 DDDDDDDD 0 DDDDDDDD 1
+;
+;* The 3 bit instruction type field is defined as follows:
+;	000 Decoder and Consist Control Instruction
+;	001 Advanced Operation Instructions
+;	010 Speed and Direction Instruction for reverse operation
+;	011 Speed and Direction Instruction for forward operation
+;	100 Function Group One Instruction
+;	101 Function Group Two Instruction 90
+;	110 Future Expansion
+;	111 Configuration Variable Access Instruction
+;
+;* Decoder and Consist Control Instruction (000):
+;  Decoder Control (0000)
+; {instruction byte} = 0000CCCD, or {instruction byte} = 0000CCCD dddddddd
+; CCC = 000		D = 0	Digital Decoder Reset:
+;						A Digital Decoder Reset shall erase all volatile memory (including and speed and direction data),
+;						and return to its initial power up state.
+; CCC = 000		D = 1	Hard Reset:
+;						Configuration Variables 29, 31 and 32 are reset to its factory default conditions,
+;						CV#19 is set to "00000000" and a Digital Decoder Reset shall be performed. ^
+;
+;* Set Decoder Flags Instruction:
+; {instruction bytes} = 0000011D cccc0aaa
+; aaa = Decoder subadres (er kunnen 7 sub-decoders op 1 basisadres worden geplaatst)
+; The decoder sub-address is defined in CV 31.
+; If aaa = 000 then the operation affects all decoders within the group.
+; cccc = 0000	D = 1	"Disable 111 Instructions"
+;			meaning:	Instruction is ignored for all sub addresses.
+;			scope:		Until next Digital Decoder Reset Packet is received.
+; cccc = 1001	D = 1	"Set 111 Instruction"
+;			meaning:	"Enables 111 Instructions" for specified subaddress,
+;						all other sub addresses are disabled. (Not valid at Consist Address).
+;			scope:		Permanent (sets CV 32, bit 1)
+; cccc = 1111	D = 1	"Accept 111 Instructions"
+;			meaning:	All previous multi-CV programming instructions are now valid.
+;			scope:		One-Time
+;
+; * Configuration Variable Access Instruction (111):
+; (Configuration Variable Access Instruction - Short Form:	{instruction byte} = 1111CCCC DDDDDDDD		!!niet gebruikt door UJE)
+; Configuration Variable Access Instruction - Long Form:	{instruction byte} = 1110CCAA AAAAAAAA DDDDDDDD
+; AA AAAAAAAA = 10-bit CV adres + 1 (2MSB-8LSB)				=> CV #1 = 00 00000000
+; CC = 00	Reserved for future use
+; CC = 01	Verify byte			
+; CC = 10	Write byte
+; CC = 11	Bit manipulation
+; Verify Byte: The contents of the Configuration Variable as indicated by the 10 bit address are compared with the data
+;	byte (DDDDDDDD). If the decoder successfully receives this packet and the values are identical, the Digital Decoder 
+;	shall respond with an the contents of the CV as the Decoder Response Transmission, if enabled.
+;	Write Byte: The contents of the Configuration Variable as indicated by the 10 bit address are replaced by the data byte
+;	(DDDDDDDD). Two identical packets are needed before the decoder shall modify a configuration variable. 
+;	These two packets need not be back to back on the track. However any other packet to the same decoder will
+;	invalidate the write operation. (This includes broadcast packets.) If the decoder successfully receives this second
+;	identical packet, it shall respond with a configuration variable access acknowledgment.
+;
+;* Basic Accessory Decoder Packet address for operations mode programming:
+; {instruction byte} = 10AAAAAA 1AAACDDD
+;	AAAAAA AAA = decoder adres (2e byte 3 bits geinverteerd als MSB, 1e byte bits als LSB)
+;	Where DDD is used to indicate the output whose CVs are being modified and C=1.
+;	If CDDD= 0000 then the CVs refer to the entire decoder. The resulting packet would be:
+;	{preamble} 10AAAAAA 0 1AAACDDD 0 (1110CCAA 0 AAAAAAAA 0 DDDDDDDD) 0 EEEEEEEE 1
+;			Accessory-Decoder-Address (Configuration-Variable-Access-Instruction) Error-Byte
+;* Extended Decoder Control Packet address for operations mode programming:
+; {instruction byte} = 10AAAAAA 0AAA0AA1
+;	{preamble} 10AAAAAA 0 0AAA0AA1 0 (1110CCAA 0 AAAAAAAA 0 DDDDDDDD) 0 EEEEEEEE 1
+;			Accessory-Decoder-Address (Configuration-Variable-Access-Instruction) Error-Byte
+;---------------------------------------
+;
+; {error detection byte} = EEEEEEEE
+; De waarde van het error-detection byte = adres-byte XOR instruction-byte
+;---------------------------------------
+;
+; 11111111 00000000 11111111	Idle packet
+; 00000000 00000000 00000000	Reset packet
+; 00000000 01DC0001 EEEEEEEE	Broadcast stop
+;
+;---------------------------------------
+; The format for packets intended for Basic Accessory Digital Decoders is:
+;	{preamble} 0 10AAAAAA 0 1AAACDDD 0 EEEEEEEE 1
+; Broadcast Command for Basic Accessory Decoders:
+;	{preamble} 0 10111111 0 1000CDDD 0 EEEEEEEE 1
+;
+; The Extended Accessory Decoder Control Packet:
+;	{preamble} 0 10AAAAAA 0 0AAA0AA1 0 000XXXXX 0 EEEEEEEE 1
+; Broadcast Command for Extended Accessory Decoders:
+;	{preamble} 0 10111111 0 00000111 0 000XXXXX 0 EEEEEEEE 1
+;-------------------------------------------------------------------
+
+
+;--- INCLUDE FILES --------------------\
+;.nolist
+.include "8535def.inc"					; AVR AT90S8535
+;.list
+;--------------------------------------/
+
+;--- COMPILER DIRECTIVES --------------\
+.equ Output_To_LED 		= 0				; ontvangen bits uitvoeren naar de LED's
+.equ Packet6Bytes		= 1				; test op 6 byte packets (bij CVar gebruik)
+;--------------------------------------/
+
+
+;--- CONSTANTEN -----------------------\
+.equ CK 			= 7372800			; CPU clock frequentie	; 7372800
+.equ TCK 			= CK/8				; timer1 frequentie		; CK/8
+.equ Min1 			= 0.000052 * TCK	; duur van een (halve/positieve) bit (in timerticks)
+.equ Max1 			= 0.000064 * TCK
+.equ Min0 			= 0.000090 * TCK
+.equ Max0 			= 0.010000 * TCK
+; LED's
+.equ LED_DDR		= DDRD
+.equ LED_Port		= PORTD
+.equ LED_Error		= PD4
+.equ LED_Bit		= PD5
+; input capture pin op AVR verbonden met de DCC
+.equ CaptureDDR		= DDRD
+.equ CapturePort	= PORTD
+.equ CaptureIn		= PIND
+.equ CapturePin		= PD6
+; strings/chars
+.equ CHR_0			= '0'
+.equ CHR_1			= '1'
+; stappen in het proces: ontvangen packet
+.equ _Preamble			= 0				; wachten totdat PreambleCount=12
+.equ _DataStartBit		= 3				; ==0? ..een data-byte volgt, ==1? ..packet-end
+.equ _DataByte			= 4				; 8-bits ontvangen, daarna goto step 3 _DataStartBit
+;---------------------------------------
+.equ DCC_BaseAddress	= 0				; het 9-bit DCC-GA basisadres voor de wissels (>0 en <509)
+;---------------------------------------
+; DCC INSTRUCTION BITS (CCC00000)					    CCC
+.equ DCC_INSTRUCTION_DecoderAndConsistControl		= 0b00000000
+.equ DCC_INSTRUCTION_AdvancedOperation				= 0b00100000
+.equ DCC_INSTRUCTION_SpeedDirectionReverse			= 0b01000000
+.equ DCC_INSTRUCTION_SpeedDirectionForward			= 0b01100000
+.equ DCC_INSTRUCTION_FunctionGroup1					= 0b10000000
+.equ DCC_INSTRUCTION_FunctionGroup2					= 0b10100000
+.equ DCC_INSTRUCTION_FutureExpansion				= 0b11000000
+.equ DCC_INSTRUCTION_ConfigurationVariableAccess	= 0b11100000
+;--------------------------------------/
+
+
+;--- REGISTER ALIASSEN ----------------\
+.def Mask0			= R8				; AVR poort masker voor de pin (van een paar outputs) van een aangesloten wissel
+.def temp			= R16				; Een register voor algemeen gebruik
+.def temp2			= R17				; nog 1..
+.def temp3			= R18				; en nog 1..
+.def PreambleCount	= R19				; aantal sequentiele "1"-bits ontvangen
+.def Step			= R20				; de huidige stap in proces ontvangen bitstream
+.def DataByte		= R21				; de opgespaarde bits van de huidige databyte
+.def DCCByte1		= R22				; bytes in de buffer: 1e byte
+.def DCCByte2		= R23				; bytes in de buffer: 2e byte
+.def DCCByte3		= R24				; bytes in de buffer: 3e byte
+.def DCCByte4		= R25				; bytes in de buffer: 4e byte
+;.def XL								; pointer naar te schrijven adres in PacketStream
+;.def XH
+.def DCCByte5		= R28				; bytes in de buffer: 5e byte
+.def DCCByte6		= R29				; bytes in de buffer: 6e byte
+;.def ZL								; bitduur in timerticks voor periode B
+;.def ZH								;   "  "
+;--------------------------------------/
+
+
+;--- Variablelen in SRAM --------------\
+.DSEG
+PacketStream:		.BYTE 10			; 10 bytes data voor de stream
+PacketStreamCount:	.BYTE 1				; het aantal bytes in deze buffer
+;--------------------------------------/
+
+
+;--- De AVR-AT90S8535 "vector"-tabel --\
+.CSEG
+.org $0000								; Het begin van de vector-tabel op adres 0 van het RAM
+	rjmp RESET							; Reset Handler
+	reti								; External Interrupt0 Vector Address
+	reti								; External Interrupt1 Vector Address
+	reti								; Timer2 compare match Vector Address
+	reti								; Timer2 overflow Vector Address
+	reti								; Timer1 Input Capture Vector Address
+	reti								; Timer1 Output Compare A Interrupt Vector Address
+	reti								; Timer1 Output Compare B Interrupt Vector Address
+	reti								; Overflow1 Interrupt Vector Address
+	reti								; Overflow0 Interrupt Vector Address
+	reti								; SPI Interrupt Vector Address
+	reti								; UART Receive Complete Interrupt Vector Address
+	reti								; UART Data Register Empty Interrupt Vector Address
+	reti								; UART Transmit Complete Interrupt Vector Address
+	reti								; ADC Conversion Complete Interrupt Vector Address
+	reti								; EEPROM Write Complete Interrupt Vector Address
+	reti								; Analog Comparator Interrupt Vector Address
+;--------------------------------------/
+
+
+;--- INCLUDE FILES --------------------\
+.include "RS232.asm"					; UART routines
+.include "NumToStr.asm"					; nummers afbeelden
+;--------------------------------------/
+
+
+
+
+
+
+;---------------------------------------
+;--- MACRO's
+;--------------------------------------\
+.MACRO initStackPointer					; De stack-pointer instellen op het einde van het RAM
+	ldi		temp2, high(RAMEND)
+	ldi		temp, low(RAMEND)
+	out		SPH, temp2
+	out		SPL, temp
+.ENDMACRO
+
+
+.MACRO LED_Off;(LED)					; LED uit
+	cbi		LED_Port, @0
+.ENDMACRO
+
+.MACRO LED_On;(LED)						; LED aan
+	sbi		LED_Port, @0
+.ENDMACRO
+
+
+.MACRO ResetCounter						; de TimerCounter1 op 0 instellen
+	clr		temp
+	out		TCNT1H, temp
+	out		TCNT1L, temp
+.ENDMACRO
+
+.MACRO ReadCounter;(ValueH,ValueL: register)	; de TimerCounter1 uitlezen in registers "ValueH" & "ValueL"
+	in		@1, TCNT1L
+	in		@0, TCNT1H
+.ENDMACRO
+
+
+; wachten op de volgende flank toggle op de capture-pin
+.MACRO WaitFor1							; wacht op een opgaande flank
+_0:	sbis	CaptureIn, CapturePin
+	rjmp	_0
+.ENDMACRO
+
+.MACRO WaitFor0							; wacht op een neergaande flank
+_0:	sbic	CaptureIn, CapturePin
+	rjmp	_0
+.ENDMACRO
+
+
+; controleren op geldige "0"- & "1"-bits
+.MACRO CheckPuls;(ValueH,ValueL: register)
+;
+; <<#####|      1      |##########|      0      |#####>>		(# = ongeldig)
+;        ^             ^          ^             ^
+;        Min1_______Max1          Min0_______Max0
+;
+
+	; Value < Min1 ?
+	cpi		@1, low(Min1)
+	ldi		temp, high(Min1)
+	cpc		@0, temp
+	brlo	_2							; bit ongeldig
+	; Value <= Max1 ?
+	cpi		@1, low(Max1+1)
+	ldi		temp, high(Max1+1)
+	cpc		@0, temp
+	brlo	_1							; geldige "1"
+	; Value < Min0 ?
+	cpi		@1, low(Min0)
+	ldi		temp, high(Min0)
+	cpc		@0, temp
+	brlo	_2							; bit ongeldig
+	; Value <= Max0 ?
+	cpi		@1, low(Max0+1)
+	ldi		temp, high(Max0+1)
+	cpc		@0, temp
+	brlo	_0							; geldige "0"
+_2:	;ongeldige bit
+	.if Output_To_LED == 1
+		LED_On LED_Error				; Error LED aan (ongeldig)
+		LED_Off LED_Bit					; Bit-LED uit
+	.endif
+	rjmp	_3
+_0:	; een geldige "0"
+	HANDLE_0							; Verwerk een geldige "0"-bit
+	.if Output_To_LED == 1
+		LED_Off LED_Error				; Error LED uit (geldig)
+		LED_Off LED_Bit					; Bit-LED uit ("0")
+	.endif
+	rjmp	_3
+_1:	; een geldige "1"					; Verwerk een geldige "1"-bit
+	HANDLE_1
+	.if Output_To_LED == 1
+		LED_Off LED_Error				; Error LED uit (geldig)
+		LED_On LED_Bit					; Bit-LED aan ("1")
+	.endif
+_3:	
+.ENDMACRO
+
+
+.MACRO HANDLE_0
+	cpi		Step, _Preamble
+	brne	_3
+	;----------------------------------\
+	cpi		PreambleCount, 12			; Preamble = 12 seq. "1"-bits ontvangen
+	brlo	_0
+	; Er is een "0"-bit ontvangen als sein PacketStartBit
+	; De preamble is binnen, goto volgende stap
+	ldi		Step, _DataByte
+	ldi		DataByte, 1					; opnieuw een byte gaan opsparen van de bus; reset DataByte
+	rjmp	_0
+	;-------
+_3:	cpi		Step, _DataStartBit
+	brne	_1
+	;----------------------------------\
+	; er is een "0"-bit ontvangen als sein DataStartBit
+	ldi		Step, _DataByte
+	ldi		DataByte, 1					; opnieuw een byte gaan opsparen van de bus; reset DataByte
+	rjmp	_0
+	;-------
+_1:	cpi		Step, _DataByte
+	brne	_0
+	;----------------------------------\
+	lsl		DataByte					; een "0" inschuiven in DataByte
+	brcc	_0							; nog geen 8 bits gehad? dan goto _0
+	; byte is binnen. goto volgende stap
+	ldi		Step, _DataStartBit
+	; bewaren in SRAM buffer
+	PushByteToStream DataByte
+	;-------
+_0:	clr		PreambleCount				; Preamble detectie resetten
+.ENDMACRO
+
+.MACRO HANDLE_1
+	inc		PreambleCount				; Preamble detectie teller ophogen
+_1:	cpi		Step, _DataByte
+	brne	_2
+	;----------------------------------\
+	lsl		DataByte
+	brcs	_3							; 8 bits gehad? dan goto _3
+	ori		DataByte, 1					; er is een "1"-bit voor de DataByte ontvangen; inschuiven in DataByte
+	rjmp	_0
+_3:	; byte is binnen. goto volgende stap
+	ldi		Step, _DataStartBit
+	ori		DataByte, 1					; er is een "1"-bit voor de DataByte ontvangen; inschuiven in DataByte
+	; bewaren in SRAM buffer
+	PushByteToStream DataByte
+	rjmp	_0
+	;-------
+_2:	cpi		Step, _DataStartBit
+	brne	_0
+	;----------------------------------\
+	; Er is een Packet-End-Bit "1" ontvangen ipv. een Data-Start-Bit "0"
+	; begin weer aan een nieuwe packet..
+	ldi		Step, _Preamble
+	; het packet in de SRAM buffer afbeelden
+	rcall	ProcessPacket
+	;-------
+_0:
+.ENDMACRO
+
+
+
+.MACRO ResetStream
+	ldi		XL, low(PacketStream)
+	ldi		XH, high(PacketStream)
+	; X verwijst nu naar de eerste byte in de PacketStream-buffer..
+.ENDMACRO
+
+.MACRO PushByteToStream;(Value:register)
+	; X verwijst naar het volgende te schrijven adres in de PacketStream-buffer..
+	st		X+, @0						; [X] := @0,  X++
+.ENDMACRO
+
+
+
+.MACRO If_IDLEPacket_GoTo;(Address:label)
+	cpi		DCCByte1, $FF				; IDLE packet?
+	brne	_0
+	rjmp	@0							; ja? dan klaar..
+_0:
+.ENDMACRO
+
+.MACRO If_NoAccessoryPacket_GoTo;(Address:label)
+	;adres voor: 	Basic Accessory Decoders with 9 bit addresses and
+	;				Extended Accessory Decoders with 11-bit addresses
+	;adresbereik:	10000000-10111111 (1e byte in buffer)
+	sbrs	DCCByte1, 7					; hoogste bit niet gezet? => geen Accessory Decoder geadresseerd
+	rjmp	@0
+;	cpi		DCCByte1, 0b11000000		; adres binnen bereik voor Accessory Decoders? (bovengrens)
+;	brlo	_0
+	sbrc	DCCByte1, 6					; bit gezet? => geen Accessory Decoder geadresseerd
+	rjmp	@0							; buiten bereik..klaar.
+_0:
+.ENDMACRO
+
+.MACRO If_ExtendedPacket_GoTo;(Address:label)
+	; als nu bit 7 van de 2e byte is gewist, is een extended packet ontvangen (met een 11-bits adres)
+	sbrs	DCCByte2, 7
+	; ..(voorlopig maar even inslikken die 11 bitter)
+	rjmp	@0
+.ENDMACRO
+
+.MACRO If_BroadcastPacket_GoTo;(Address:label)
+	; is het een (basic of extended) broadcast packet voor een Accessory Decoder
+	; (Byte1=10111111 en Byte2=x111xxxx)
+	cpi		DCCByte1, 0b10111111
+	brne	_0
+	;2e byte (1AAACDDD) waarvan alle A-bits op 1?
+	mov		temp3, DCCByte2
+	com		temp3						; de 3 A-bits zijn geinverteerd
+	andi	temp3, 0b01110000
+	brne	_0
+	; we hebben een broadcast packet ontvangen voor een Accessory Decoder
+	; De 2e byte (1AAACDDD) bevat de C & DDD bits zoals in een Basic packet.
+	;
+	; ..(voorlopig maar even inslikken die broadcast)
+	rjmp	@0
+_0:
+.ENDMACRO
+
+.MACRO If_NoOperationsModePacket_GoTo;(Address:label)
+;byte 1 & 2: 10AAAAAA 1AAACDDD voldoet
+; is het packet 6 bytes lang?
+	lds		temp, PacketStreamCount
+	cpi		temp, 6
+	breq	_1
+	rjmp	@0							; het is geen 6 byte packet..
+_1:	; Byte3=1110CCAA?
+	mov		temp, DCCByte3
+	andi	temp, 0b11110000
+	cpi		temp, 0b11100000
+	breq	_0							; indien geen CVar operatie? dan skippen..
+	rjmp	@0							; ..want het is geen Operations-Mode packet..
+_0:	; Het betreft een CVar operatie
+	; DCCByte5 bevat de CVar databyte, DCCByte6 bevat de error-detection byte
+.ENDMACRO
+
+.MACRO If_ErrorDetected6_GoTo;(Address:label)
+	; controleer het (6 byte) packet mbv. de error-detection
+	; dwz. DCCByte1 XOR DCCByte2 XOR DCCByte3 XOR DCCByte4 XOR DCCByte5 = DCCByte6, anders een error detected..
+	mov		temp3, DCCByte1
+	eor		temp3, DCCByte2
+	eor		temp3, DCCByte3
+	eor		temp3, DCCByte4
+	eor		temp3, DCCByte5
+	cp		temp3, DCCByte6
+	breq	_0
+	; er is een fout in de overdracht gedetecteerd. :-(
+	rjmp	@0
+_0:	
+.ENDMACRO
+
+.MACRO If_ErrorDetected3_GoTo;(Address:label)
+	; controleer het (3 byte) packet mbv. de error-detection
+	; dwz. DCCByte1 XOR DCCByte2 = DCCByte3, anders een error detected..
+	mov		temp3, DCCByte1
+	eor		temp3, DCCByte2
+	cp		temp3, DCCByte3
+	breq	_0
+	; er is een fout in de overdracht gedetecteerd. :-(
+	rjmp	@0
+_0:	
+.ENDMACRO
+
+.MACRO Get_CVarAddress10;(ValueH,ValueL: register)
+	; het CVar adres staat in DCCByte3 & DCCByte4: (1110CCAA AAAAAAAA)
+	mov		@0, DCCByte3
+	andi	@0, 0b00000011
+	mov		@1, DCCByte4
+.ENDMACRO
+
+.MACRO Get_DCCAddress9;(ValueH,ValueL: register)
+	; Het 9-bits DCC-adres bepalen van de wissel:
+	;!! let erop dat de A-bits van DCCByte2 zijn geinverteerd
+	mov		@1, DCCByte1
+	andi	@1, 0b00111111
+	clr		@0
+	sbrs	DCCByte2, 4					; bit 4 van 2e byte gezet? dan skippen..
+	ori		@1, 0b01000000				; ..anders bit 6 zetten van @1
+	sbrs	DCCByte2, 5					; bit 5 van 2e byte gezet? dan skippen..
+	ori		@1, 0b10000000				; ..anders bit 7 zetten van @1
+	sbrs	DCCByte2, 6					; bit 4 van 2e byte gezet? dan skippen..
+	ori		@0, 0b00000001				; ..anders bit 0 zetten van @0
+.ENDMACRO
+
+.MACRO Get_WisselAddress2
+	; De DDD-bits van de 2e byte (1AAACDDD) filteren naar "Mask0" en "Mask1" (AVR-poortpin maskers).
+	; Deze bits bepalen om welke wissel het gaat (1 van de 4 op een enkel DCC-"Accessory"-adres)
+	; of alle wissels (op DCC-adres) als CDDD = 0000.
+	mov		temp2, DCCByte2				; 2e byte in de buffer
+
+_2:	andi	temp2, 0b00000111			; DDD-bits overhouden
+	; even omrekenen naar 2 poort maskers..
+	; De te gebruiken AVR pin-nummer is nu gelijk aan de waarde van temp2
+	; Het masker dat ik wil hebben: Mask0=2^temp2
+	ldi		temp3, 1
+	mov		Mask0, temp3
+	cpi		temp2, 0
+	breq	_0
+_1:	lsl		Mask0
+	dec		temp2
+	brne	_1
+_0:
+.ENDMACRO
+
+.MACRO Get_Activation;(CBitValue:register)
+	; De C-bits van de 2e byte (1AAACDDD) filteren naar @0
+	; Deze bit bepaalt of er een ACTIVATE of DEACTIVATE is gestuurd.
+	mov		@0, DCCByte2				; 2e byte in de buffer
+	andi	@0, 0b00001000
+.ENDMACRO
+
+.MACRO Write_AVRport;(DCCAddrH,DCCAddrL: register)
+	; "DCCAddr" = DCC_BaseAddress? dan betreft het een wissel op PORTA
+	cpi		@1, low(DCC_BaseAddress)
+	ldi		temp, high(DCC_BaseAddress)
+	cpc		@0, temp
+	brne	_1
+	Switch_Wissel PORTA
+	rjmp	_0
+_1:	; "DCCAddr" = DCC_BaseAddress+1? dan betreft het een wissel op PORTB
+	cpi		@1, low(DCC_BaseAddress+1)
+	ldi		temp, high(DCC_BaseAddress+1)
+	cpc		@0, temp
+	brne	_2
+	Switch_Wissel PORTB
+	rjmp	_0
+_2:	; "DCCAddr" = DCC_BaseAddress+2? dan betreft het een wissel op PORTC
+	cpi		@1, low(DCC_BaseAddress+2)
+	ldi		temp, high(DCC_BaseAddress+2)
+	cpc		@0, temp
+	brne	_0
+	Switch_Wissel PORTC
+_0:
+.ENDMACRO
+
+.MACRO Switch_Wissel;(PORT:poortadres)
+	in		temp, @0
+	; activeren of deactiveren?
+	sbrc	DCCByte2, 3					; C-bit gewist? dan de volgende instructie overslaan
+	rjmp	_1
+	; DE-ACTIVEER, pin op 0
+	com		Mask0
+	and		temp, Mask0
+	rjmp	_2
+_1:	; ACTIVEER, pin op 1
+	or		temp, Mask0
+_2:	out		@0, temp
+.ENDMACRO
+
+.MACRO Handle_CV;(DCCAddress9H,DCCAddress9L, CVH,CVL, DataByte: register; OnError:Label)
+	; CVar schrijven? (DCCByte3=1110CCAA, CC=11)
+	mov		temp, DCCByte3
+	andi	temp, 0b00001100
+	cpi		temp, 0b00001100
+	breq	_1
+	cpi		temp, 0b00000100
+	breq	_2
+	; alleen nog ondersteund: CV-write en CV-verify
+	rjmp	@5
+_1:	; CV WRITE
+	; De CV #CV van DCC-device met adres DCCAddress9 instellen op waarde DataByte
+	;mov	ZH, @0
+	;mov	ZL, @1
+	rcall	Hex							; DCC-adres
+	rcall	UART_Space
+	mov		ZH, @2
+	mov		ZL, @3
+	rcall	Hex							; CV #
+	rcall	UART_Space
+	mov		R16, @4
+	rcall	HexByte						; data
+	rcall	UART_CrLf
+	rjmp	@5
+_2:	; CV VERIFY
+	; De CV #Y van DCC-device met adres Z verifieren met waarde DCCByte5
+
+	rjmp	@5
+_0:
+.ENDMACRO
+;--------------------------------------/
+
+
+
+
+
+;---------------------------------------
+;--- Een DCC packet verwerken
+;--------------------------------------\
+ProcessPacket:
+	; X verwijst naar de byte net na einde PacketStream-buffer..
+	; dus: Aantal bytes in buffer = (X - PacketStream)
+.if Packet6Bytes == 1
+	subi	XL, low(PacketStream)
+	ldi		temp, high(PacketStream)
+	sbc		XH, temp
+	sts		PacketStreamCount, XL		; aantal bytes in buffer bewaren..
+.endif
+	;
+	; makkelijk refereren naar bytes in de packet-buffer..
+	lds		DCCByte1, PacketStream		; 1e byte in de buffer lezen		; 3 cycles
+	lds		DCCByte2, PacketStream+1	; 2e byte in de buffer lezen
+	lds		DCCByte3, PacketStream+2	; 3e byte in de buffer lezen
+.if Packet6Bytes == 1
+	lds		DCCByte4, PacketStream+3	; 4e byte in de buffer lezen
+	lds		DCCByte5, PacketStream+4	; 5e byte in de buffer lezen
+	lds		DCCByte6, PacketStream+5	; 6e byte in de buffer lezen
+.endif
+	;lds	DCCByte7, PacketStream+6	; 7e byte in de buffer lezen
+
+	If_IDLEPacket_GoTo Done_ProcessPacket
+
+	If_NoAccessoryPacket_GoTo Done_ProcessPacket
+
+	If_ExtendedPacket_GoTo Done_ProcessPacket
+
+	If_BroadcastPacket_GoTo Done_ProcessPacket
+
+
+.if Packet6Bytes == 1
+		If_NoOperationsModePacket_GoTo Packet3
+		;--- Een 6 byte packet: Operations-Mode (om CVars in te stellen)
+	Packet6:
+		; we hebben een Accessory Decoder adres te pakken..(in een 6 byte packet)
+		If_ErrorDetected6_GoTo Done_ProcessPacket
+		; Nu het 9-bits DCC-adres bepalen van de (4) wissel(s) en plaatsen in register Z
+		Get_DCCAddress9 ZH, ZL
+		; het 10-bits CVar adres filteren naar register Y
+		Get_CVarAddress10 YH, YL
+		; de CV schrijven of verifieren
+		Handle_CV ZH,ZL, YH,YL, DCCByte5, Done_ProcessPacket
+		;---
+	Packet3:
+.endif
+	; we hebben een Accessory Decoder adres te pakken..(in een 3 byte packet)
+	If_ErrorDetected3_GoTo Done_ProcessPacket
+	; Nu het 9-bits DCC-adres bepalen van de (4) wissel(s) en plaatsen in register Z
+	Get_DCCAddress9 ZH, ZL
+	; Het 2-bit subadres van de wissel uit DCCByte2 halen (1AAACDDD)
+	Get_WisselAddress2
+	; de AVR poort beschrijven en daarmee de wissel (op DCC GA-adres Z) aansturen
+	Write_AVRport ZH, ZL
+
+Done_ProcessPacket:
+	ResetStream
+	ret
+;--------------------------------------/
+
+
+;---------------------------------------
+;--- De LED poorten instellen
+;--------------------------------------\
+LED_Initialize:
+	sbi		LED_DDR, LED_Error			; output
+	LED_Off LED_Error					; Error LED uit
+	sbi		LED_DDR, LED_Bit			; output
+	LED_Off LED_Bit						; Bit LED uit
+	ret
+;---------------------------------------
+
+;---------------------------------------
+;--- De Capture pin instellen
+;--------------------------------------\
+Capture_Initialize:
+	cbi		CaptureDDR, CapturePin		; "input capture" pin
+	cbi		CapturePORT, CapturePin		; tri-state
+	ret
+;--------------------------------------/
+
+;---------------------------------------
+;--- De AVR poorten initialiseren
+;--------------------------------------\
+WisselPoort_Initialize:
+	cbi		ADCSR, ADEN					; ADC disable
+	; alle wissel-poorten op output
+	ser		temp
+	out		DDRA, temp
+	out		DDRB, temp
+	out		DDRC, temp
+	clr		temp
+	out		PORTA, temp
+	out		PORTB, temp
+	out		PORTC, temp
+	ret
+;--------------------------------------/
+
+;---------------------------------------
+;--- De Timer1 initialiseren
+;--------------------------------------\
+Timer_Initialize:
+	; interrupts tegengaan
+	clr		temp
+	out		TIMSK, temp
+
+	; De Timer1 HW-PWM uitschakelen
+	;clr	temp
+	out		TCCR1A, temp
+
+	;-- waarden voor TCCR1B
+	; ICNC1: Noise Canceler uitschakelen => input capture om elke sample/capture. (nvt nu)
+	; ICES1: Input Capture Interrupts op opgaande flank laten genereren. (nvt nu)
+	; CTC1:  Clear TCNT on compareA match uitschakelen
+	; CS12,CS11 & CS10: timer1clock-select instellen op CK/8 (0,1,0)
+	ldi		temp, (0<<ICNC1 | 0<<ICES1 | 0<<CTC1 | 0<<CS12 | 1<<CS11 | 0<<CS10)
+	out		TCCR1B, temp
+
+	; timer1 alle interrupts uitschakelen
+	clr		temp
+	out		TIMSK, temp
+
+	; de counter op 0 instellen
+	ResetCounter
+	ret
+;--------------------------------------/
+
+
+
+
+
+;---------------------------------------
+;--- Main Program
+;--------------------------------------\
+RESET:
+	;-- initialisatie
+	cli									; interrupts tegenhouden
+	initStackPointer					; initialiseer de stack pointer
+	rcall	UART_Initialize
+	;rcall	LED_Initialize				; de LED's
+	rcall	WisselPoort_Initialize		; poort A wissel output
+	rcall	Capture_Initialize			; de input pin voor het DCC signaal
+	ResetStream							; de packetstream buffer
+	rcall	Timer_Initialize			; de timer
+	rcall	UART_transmit_InitString
+	sei									; interrupts weer toelaten
+	;--
+	clr		PreambleCount				; de Preamble detectie teller
+	ldi		Step, _Preamble				; de huidige stap
+
+stream_loop:
+
+	WaitFor0							; wachten totdat het (DCC) ICP-signaal laag wordt (PD6)
+	; begin Periode B
+	ReadCounter ZH, ZL					; de timercounter uitlezen in register Z
+										; (alleen nog erin vanwege TCNT reset tijdverschillen)
+	ResetCounter						; de counter op 0 instellen
+	
+	WaitFor1							; wachten totdat het (DCC) ICP-signaal hoog wordt (PD6)
+	; begin periode A
+	ReadCounter ZH, ZL					; de timercounter uitlezen in register Z
+	ResetCounter						; de counter op 0 instellen
+
+	CheckPuls ZH, ZL					; controleer ontvangen halve bit (periode B)
+
+	rjmp 	stream_loop
+;--------------------------------------/
+
+
+
+
+
+

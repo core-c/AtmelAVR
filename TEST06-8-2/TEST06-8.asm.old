@@ -1,0 +1,126 @@
+
+;********************************************************************************
+;***
+;***  Een implementatie voor een 8-bit aansturing van het LED-display.
+;***
+;***	LED-Display	AVR
+;***	-----------	-----------------------------
+;***	1	Vss	   	GND 
+;***	2	Vcc	  	5V 
+;***	3	Vee	  	GND of naar een potmeter
+;***
+;***	4	RS	  	PA5 |
+;***	5	RW	  	PA6 > control lijnen (OUTPUT)
+;***	6	E	  	PA7 |
+;***
+;***	7	DB0	  	PC0 |
+;***	8	DB1	  	PC1 |
+;***	9	DB2	  	PC2 |
+;***	10	DB3	  	PC3 > data lijnen (OUTPUT)
+;***	11	DB4	  	PC4 |
+;***	12	DB5	  	PC5 |
+;***	13	DB6	  	PC6 |
+;***	14	DB7	  	PC7 |
+;***
+;*** RW high = lezen, RW low = schrijven.
+;*** RS high = DATA, RS low = COMMANDO
+;***
+;*** * Als RW op LEZEN (1) is ingesteld, en RS op BEVEL (0), dan kan de busy-flag
+;*** gelezen worden.
+;*** Als de LED-Display pin RW aan de AVR-GND aangesloten is, dan kan er geen
+;*** busy-flag gelezen worden om te bepalen of commando's verwerkt zijn. In dat
+;*** geval moeten er korte pauzes ingelast worden tussen bevelen/commando's om er
+;*** zeker van te zijn dat commando's verwerkt zijn.
+;*** Bij onze 8-bits aansturing wordt de RW pin echter normaal aangesloten.
+;*** Er zijn wat pauze routines gedefinieerd; Deze pauze-routines zijn afgestemd 
+;*** op een 7.3728MHz AVR.
+;***
+;*** registergebruik:
+;***	R30:R31 = het Z-Register
+;***	R0 (CharReg) wordt gebruikt in samenhang met de LPM-instructie.
+;***	Alle temp-registers zijn voor algemeen gebruik
+;***	Alle delay-registers worden gebruikt voor wacht-routine's
+;***
+;********************************************************************************
+
+
+;--- INCLUDE FILES -----------------
+.include "8535def.inc"				; Atmel AVR-AT90S8535 definities
+.include "IO.inc"					; Instellen I/O-poorten
+
+
+
+.cseg								; Het begin van het CODE-segment
+;--- De Interrupt-vector tabel -----
+.org $0000							; Het begin van de vector-tabel op adres 0 van het RAM
+	rjmp RESET						; Reset Handler
+	reti							; External Interrupt0 Vector Address
+	reti							; External Interrupt1 Vector Address
+	reti							; Timer2 compare match Vector Address
+	reti							; Timer2 overflow Vector Address
+	reti							; Timer1 Input Capture Vector Address
+	reti							; Timer1 Output Compare A Interrupt Vector Address
+	reti							; Timer1 Output Compare B Interrupt Vector Address
+	reti							; Overflow1 Interrupt Vector Address
+	reti							; Overflow0 Interrupt Vector Address
+	reti							; SPI Interrupt Vector Address
+	reti							; UART Receive Complete Interrupt Vector Address
+	reti							; UART Data Register Empty Interrupt Vector Address
+	reti							; UART Transmit Complete Interrupt Vector Address
+	reti							; ADC Conversion Complete Interrupt Vector Address
+	reti							; EEPROM Write Complete Interrupt Vector Address
+	reti							; Analog Comparator Interrupt Vector Address
+;-----------------------------------
+
+
+
+;--- LCD INCLUDE FILE --------------
+.include "LCD.asm"					; LC-Display
+
+;--- De teksten in programma-geheugen --
+Line0:	.db	"LCD-Display @ 8-bit", EOS_Symbol
+Line1:	.db	"AVR @ 7.3728 MHz.", EOS_Symbol
+Line2:	.db	"ADC-Value: ", EOS_Symbol
+Line3:	.db	"COMM-Rx: ", EOS_Symbol
+
+
+
+;---------------------------------------
+;--- PROGRAMMA START
+;---------------------------------------
+RESET:
+	; De stack-pointer instellen op het einde van het RAM
+	ldi		temp, high(RAMEND)
+	ldi		tempL, low(RAMEND)
+	out		SPH, temp
+	out		SPL, tempL
+
+	; LCD-Display initialiseren
+	rcall	LCD_Init
+
+	; display-ares instellen op 1e regel
+	ldi		temp, AddrLine0
+	rcall	LCD_SetDisplayAddr
+	; 1e regel afbeelden
+	LCD_PrintString Line0
+
+	; display-ares instellen op 2e regel
+	ldi		temp, AddrLine1
+	rcall	LCD_SetDisplayAddr
+	; 2e regel afbeelden
+	LCD_PrintString Line1
+
+	; display-ares instellen op 3e regel
+	ldi		temp, AddrLine2
+	rcall	LCD_SetDisplayAddr
+	; 3e regel afbeelden
+	LCD_PrintString Line2
+
+	; display-ares instellen op 4e regel
+	ldi		temp, AddrLine3
+	rcall	LCD_SetDisplayAddr
+	; 4e regel afbeelden
+	LCD_PrintString Line3
+
+eLoop:
+	rjmp	eLoop

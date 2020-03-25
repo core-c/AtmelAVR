@@ -1,0 +1,782 @@
+
+ TCOMMPORTDRIVER (COMDRV32) GUIDA PER IL PROGRAMMATORE               © 1997 d3k
+--------------------------------------------------------------------------------
+
+
+                                  componente
+
+                         T C O M M P O R T D R I V E R
+
+                                (Unit COMDRV32)
+
+
+
+                               V1.02 05-GIU-1997
+
+
+
+                                  scritto da
+                                   M. Cocco
+
+
+
+               © 1997 by Marco Cocco. Tutti i diritti riservati.
+                   © 1997 by d3k. Tutti i diritti riservati.
+
+
+                     Inviate i Vs commenti a: d3k@mdnet.it
+                        URL: http://www.mdlive.com/d3k/
+
+
+ [ L E G G E R E ]
+
+ ******************************************************************************
+ *     Il permesso di utilizzare, copiare, modificare e distribuire questo    *
+ *    software e la sua documentazione  senza alcuna richiesta di pagamento   *
+ *                      è consentita per qualsiasi scopo,                     *
+ *   se e solo se, le informazioni di copyright di  cui sopra e questo testo  *
+ *    siano mantenute su tutte le copie del software e della documentazione.  *
+ *                                                                            *
+ *                   E' VIETATA LA VENDITA DI QUESTO SOFTWARE                 *
+ *                                                                            *
+ *   NON SI ASSUME ALCUNA RESPONSABILITA' SULL'IDONEITA' DI QUESTO SOFTWARE   *
+ *   PER QUALSIASI SCOPO.  ESSO E' RESO DISPONIBILE "NEL SUO STATO ATTUALE"   *
+ *                  SENZA ALCUNA GARANZIA ESPLICITA O IMPLICITA.              *
+ *  NE MARCO COCCO NE LA D3K POTRANNO ESSERE CHIAMATI IN CAUSA PER QUALSIASI  *
+ *  DANNO, MATERIALE O IMMATERIALE, ECONOMICO O ALTRO, CAUSATO DALL'UTILIZZO  *
+ *                            DI QUESTO SOFTWARE.                             *
+ ******************************************************************************
+
+ [ A L T R O ]
+
+ Sono graditi commenti sulla documentazione e sul software. Questi dovranno
+ essere spedidi al seguente indirizzo email: d3k@mdnet.it.
+
+ Se aggiungete funzionalità a TCommPortDriver potete inviare i files modificati
+ e un piccolo testo esplicativo, in modo da rendere disponibili a tutti le
+ nuove funzionalità.
+
+ Sarò grato a chiunque vorrà aiutarmi nel rendere TCommPortDriver privo di
+ errori, potente e disponibile a tutti gratuitamente.
+
+ Se non si è un programmatore esperto o se si ha conescenze specifiche per la
+ gestione delle API di Windows o qualsiasi altro aspetto della programmazione,
+ si invii una richiesta di aiuto o di modifiche (migliorie) a questo software
+ all'indirizzo email sopra riportato.
+ Sono graditi suggerimenti se e solo se questi sono di tipo generale, ossia
+ utili a tutti coloro che vorranno utilizzare questo software.
+
+ Se utilizzate TCommPortDriver vi invitiamo a farci sapere per quale tipo
+ di applicazione lo state utilizzanto. Tutto ciò per renderci conto di quanto
+ questo componente possa essere utile e per decidere se supportarlo e
+ migliorarlo, oppure riporlo in un floppy disk poichè inutile o poco apprezzato.
+
+ Vi ricordiamo che TCommPortDriver è FREEWARE, ossia l'autore (Marco Cocco)
+ permette a chiunque l'utilizzo gratuito del componente, sia per applicazioni
+ commerciali sia per quelle non-commerciali.
+ Viene concesso a tutti l'utilizzo del software, tuttavia, il codice sorgente
+ e la documentazione allegata rimane di proprietà dell'autore.
+ E' vietata la vendita di questo software. E' tuttavia consentita la vendita
+ dei software utilizzanti questo software come "libreria per l'accesso alle
+ porte seriali".
+
+ E' concessa la distruzione di questo software in CD-ROM contenenti altro
+ software, a patto che, e solo se, il costo del CD-ROM sia inteso come
+ costo di masterizzazione, marketing e pubblicità del supporto CD-ROM stesso e
+ non del materiale (software) in esso contenuto.
+
+ Se si utilizza questo software, si accetta implicitamente ogni clausola della
+ licenza d'uso. Con la frase "utilizzo del software" si intende: la
+ compilazione, il linking, l'apporto di modifiche e la distribuzione.
+
+ [ R I N G R A Z I A M E N T I ]
+
+ Si ringrazia:
+
+ - Igor Gitman (gitman@interlog.com)
+     * ha riscontrato il problema con la porta seriale COM1
+       (solo TCommPortDriver nella versione a 16bit)
+
+ - Chiunque stia utilizzando questo software.
+
+ [ S T O R I A ]
+
+ V1.00/32 - 15-FEB-1997 : prima implementazione( 32 BIT, solo per Delphi 2.0 )
+                          E' disponibile COMDRV16.ZIP per Delphi 1.0
+ V1.00/16 - 21-MAG-1997 : porting su Delphi 1.0
+ V1.01/32 - ??-MAG-1997 : aggiunti commenti al codice sorgente
+ V1.02/32 - 05-GIU-1997 : new prc: SendZString( s:pchar )
+                          new prc: FlushBuffers( inFlg, outFlg: boolean )
+                          new prc: ToggleDTR( onOff: boolean )
+                          new prc: ToggleRTS( onOff: boolean )
+                          new prp: EnableDTROnOpen: boolean
+                          new prc: OutFreeSpace: word
+                          chg prc: SendData( DataPtr: pointer;
+                                             DataSize,
+                                             TimeOutMS: integer ): integer
+
+ [ P R E V I S I O N I   D I   S V I L U P P O ]
+
+ La V2.00/32 di TCommPortDriver avrà queste buone nuove:
+   - supporto completo del protocollo Kermit
+   - supporto completo del protocollo XModem protocol
+   - supporto completo del protocollo YModem protocol
+   - supporto completo del protocollo ZModem protocol
+   - ...
+
+ [ D E S C R I Z I O N E ]
+
+ TCommPortDriver è un componente per il Borland Delphi 2.0 che ingloba le
+ chiamate API Win32 per le comunicazioni seriali.
+ Ciò permette una gestione semplificata (ma non per questo meno potente) delle
+ delle porte seriali e del sistema I/O di Windows.
+
+ [ C A R A T T E R I S T I C H E ]
+
+ - supporta COM1, COM2, COM3, COM4
+ - supporta 110, 300, 600, 1200, 2400, 4800, 9600, 14400, 19200,
+   38400, 56000, 56700 e 115200 bps
+ - 5, 6, 7, 8 data bits
+ - 1, 1.5, 2 stop bits
+ - 5 tipi di parità: none, even, odd, mark and space
+ - none, RTS/CTS, XON/XOFF, RTS/CTS + XON/XOFF flow control
+ - controllo manuale delle linee RTS and CTS
+ - ricezione asincrona dei dati
+ - dimensione dei buffers di input e output variabile
+ - flush dei buffers do ricezine/trasmissione
+
+ [ P R O P R I E T A' ]
+
+   [COMPORT]
+
+     <Definizione> ComPort: TComPortNumber
+     <Default>     pnCOM2;
+     <Published>   sì
+
+     <Descrizione> La proprietà ComPort determina quale porta seriale si deve
+                   utilizzare.
+                   Questi sono i valori possibili:
+
+                   Valore    Significato
+                   -------------------------------------------------------------
+                   pnCOM1    COM1
+                   pnCOM2    COM2
+                   pnCOM3    COM3
+                   pnCOM4    COM4
+
+     <Altre info>  COM1 è di solito utilizzata per il mouse seriale
+                   COM2 è di solito libera o connessa ad un modem
+
+                   COM1 e COM3, COM2 e COM4 di solito condividono lo stesso
+                   IRQ: non è possibile quindi utilizzare contemporaneamente
+                   COM1 con COM3, o COM2 con COM4.
+
+                   Non è possibile cambiare il valore di ComPort se si è già
+                   connessi (ad un'altra porta seriale).
+                   Per modificare ComPort si deve chiamare Disconnect,
+                   modificare il suo valore e quindi chiamare Connect.
+
+   [COMPORTSPEED]
+
+     <Definizione> ComPortSpeed: TComPortSpeed
+     <Default>     br9600
+     <Published>   sì
+
+     <Descrizione> La proprietà ComPortSpeed determina la velocità (bauds) della
+                   porta seriale. Questi sono i possibili valori:
+
+                   Valore    Significato
+                   -------------------------------------------------------------
+                   br110     110 bauds
+                   br300     300 bauds
+                   br600     600 bauds
+                   br1200    1200 bauds
+                   br2400    2400 bauds
+                   br4800    4800 bauds
+                   br9600    9600 bauds
+                   br14400   14400 bauds
+                   br19200   19200 bauds
+                   br38400   38400 bauds
+                   br56000   56000 bauds
+                   br57600   57600 bauds
+                   br115200  115200 bauds
+
+     <Altre info>  I sistemi x86 sono capaci di trasmissioni seriali a valocità
+                   sino a 115200 bauds.
+                   Alcune schede seriali hanno difficoltà nel lavorare con
+                   alte velocità (di solito le vecchie 8250 UARTS).
+                   Altre schede seriali supportano velocità oltre i 115K bauds,
+                   tuttavia, esse non sono supportate direttamente dal sistema
+                   operativo.
+
+                   Le modifiche apportate al valore di ComPortSpeed sono
+                   applicate immediatamente, ossia, la velocità  viene
+                   modificata istantaneamente se si è già connessi ad una porta
+                   seriale.
+
+   [COMPORTDATABITS]
+
+     <Definizione> ComPortDataBits: TComPortDataBits
+     <Default>     db8BITS
+     <Published>   sì
+
+     <Descrizione> La proprietà ComPortDataBits determina la dimensione dalla
+                   parola dati che è possibile inviare e ricevere dalla porta
+                   seriale.
+                   Questi sono i possibili valori:
+
+                   Valore    Significato
+                   -------------------------------------------------------------
+                   db5BITS   5 bits
+                   db6BITS   6 bits
+                   db7BITS   7 bits
+                   db8BITS   8 bits
+
+     <Altre info>  L' UART 8250 non supporta le seguenti combinazioni:
+                    - 5 data bits con 2 stop bits.
+                    - 6, 7, o 8 data bits con 1.5 stop bits.
+
+                   Le modifiche apportate al valore di ComPortDataBits sono
+                   applicate immediatamente, ossia, la dimensione della parola
+                   dati viene modificata istantaneamente anche se si è già
+                   connessi ad una porta seriale.
+
+   [COMPORTSTOPBITS]
+
+     <Definizione> ComPortStopBits: TComPortStopBits
+     <Default>     sb1BITS
+     <Published>   sì
+
+     <Descrizione> La proprietà ComPortStopBits determina il numero di stop bits
+                   codificati dopo ongi parola dati inviata/ricevuta attraverso
+                   la porta seriale.
+
+                   Il bit di stop non indica la fine di una parola dati.
+                   Esso separa due parole dati consecutive portando il segnale
+                   nello stato 'mark' per un breve periodo di tempo, in modo
+                   che il bit di start successivo sia chiaramente
+                   identificabile.
+
+                   Questi sono i possibili valori:
+
+                   Valore         Significato
+                   -------------------------------------------------------------
+                   sb1BITS        1 stop bit
+                   sb1HALFBITS    1.5 stop bits
+                   sb2BITS        2 stop bits
+
+     <Altre info>  L' UART 8250 non supporta le seguenti combinazioni:
+                    - 5 data bits con 2 stop bits.
+                    - 6, 7, o 8 data bits con 1.5 stop bits.
+
+                   Le modifiche apportate al valore di ComPortStopBits sono
+                   applicate immediatamente, ossia, il numero di stop bits viene
+                   modificato istantaneamente se si è già connessi ad una porta
+                   seriale.
+
+   [COMPORTPARITY]
+
+     <Definizione> ComPortParity: TComPortParity
+     <Default>     ptNONE
+     <Published>   sì
+
+     <Descrizione> La proprietà ComPortParity determina il tipo di parità da
+                   utilizzare per la trasmissione/ricezione dei dati.
+                   Questi sono i possibili valori:
+
+                   Valore         Significato
+                   -------------------------------------------------------------
+                   ptNONE         nessuna parità
+                   ptODD          parità dispary (ODD)
+                   ptEVEN         parità pari (EVEN)
+                   ptMARK         parità MARK
+                   ptSPACE        parità SPACE
+
+     <Altre info>  Un bit di parità può essere concatenato ad una parola dati
+                   in modo da permettere l'identificazione di eventuali errori
+                   di trasmissione.
+                   I tipi di parità sono quattro (+1): odd, even, mark, space
+                   (+ none).
+
+                   La parità 'Odd' (dispari) significa che il numero di bit
+                   a livello 'low' ('mark') nella parola dati è sempre dispari.
+                   Il bit di parità viene quindi posto ad un livello low or high
+                   in modo che il numero di bit 'low' sia sempre dispari.
+
+                   La parità 'Even' (pari) significa che il numero di bit a
+                   livello 'low' ('mark') nella parola dati è sempre pari.
+                   Il bit di parità viene quindi posto ad un livello low or high
+                   in modo che il numero di bit 'low' sia sempre pari.
+
+                   La parità 'Mark' significa che il bit di parità è sempre
+                   nello stato 'mark' (low).
+
+                   La parità 'Space' significa che il bit di parità è sempre
+                   nello stato 'space' (high).
+
+                   Le modifiche apportate al valore di ComPortParity sono
+                   applicate immediatamente, ossia, il tipo di parità viene
+                   modificato istantaneamente se si è già connessi ad una porta
+                   seriale.
+
+
+   [COMPORTHWHANDSHAKING]
+
+     <Definizione> ComPortHwHandshaking: TComPortHwHandshaking
+     <Default>     hhNONE
+     <Published>   sì
+
+     <Descrizione> La proprietà ComPortHwHandshaking determina il tipo di
+                   controllo di flusso hardware da utilizzare.
+                   Questi sono i possibili valori:
+
+                   Valore    Significato
+                   -------------------------------------------------------------
+                   hhNONE    disabilita il controllo di flusso hardware
+                   hhRTSCTS  abilita il controllo di flusso RTS/CTR
+
+     <Altre info>  Il controllo di flusso è un metodo di scambio di segnali
+                   che permette una perfetta sincronizzazione tra il dispositivo
+                   trasmittente e il dispositivo ricevente.
+
+                   I segnali RTS e CTS sono stati appositamente pensati per il
+                   controllo di flusso dei dati.
+                   Il dispositivo trasmittente segnala al dispositivo ricevente
+                   che ha dei dati da inviare abilitando il segnale RTS
+                   ('Request To Send'). Il dispositivo ricevente conferma la sua
+                   disponibilità ad accettare dati abilitando il segnale CTS
+                   ('Clear To Send').
+
+                   Le modifiche apportate al valore di ComPortHwHandshaking sono
+                   applicate immediatamente, ossia, il tipo di controllo di
+                   flusso viene modificato istantaneamente se si è già connessi
+                   ad una porta seriale.
+
+   [COMPORTSWHANDSHAKING]
+
+     <Definizione> ComPortSwHandshaking: TComPortSwHandshaking
+     <Default>     shNONE
+     <Published>   sì
+
+     <Descrizione> La proprietà ComPortSwHandshaking determina il tipo di
+                   controllo di flusso software da utilizzare.
+                   Questi sono i possibili valori:
+
+                   Valore       Significato
+                   -------------------------------------------------------------
+                   shNONE       disabilita il controllo di flusso software
+                   shshXONXOFF  abilita il controllo di flusso XON/XOFF
+
+     <Altre info>  Il controllo di flusso è un metodo di scambio di segnali
+                   che permette una perfetta sincronizzazione tra il dispositivo
+                   trasmittente e il dispositivo ricevente.
+
+                   Il controllo di flusso XON/XOFF utilizza due caratteri ASCII
+                   speciali: il carattere XON (DC1, Ctrl-Q, ASCII 17) e il
+                   carattere XOFF (DC3, Ctrl-S, ASCII 19).
+                   Quando il dispositivo ricevente vuole interrompere il flusso
+                   di dati in ricezione, invia XOFF ('Transmission Off').
+                   Quando è in grado di ricevere altri dati, invia XON
+                   (Transmission On').
+
+                   (In alcune implementazioni , XON e XOFF possono essere un
+                   qualsiasi codice ASCII).
+
+                   Il controll di flusso XON/XOFF è naturalmente limitato alla
+                   trasmissione di testi.
+                   Non può essere utilizzato per la trasmissione di dati binari
+                   poichè questi possono contenere anche i caratteri XON/XOFF
+                   e il controllo di flusso verrebbe disturbato.
+
+                   Le modifiche apportate al valore di ComPortSwHandshaking sono
+                   applicate immediatamente, ossia, il tipo di controllo di
+                   flusso viene modificato istantaneamente se si è già connessi
+                   ad una porta seriale.
+
+   [COMPORTINBUFSIZE]
+
+     <Definizione> ComPortInBufSize: word
+     <Default>     2048 bytes
+     <Published>   sì
+
+     <Descrizione> La proprietà ComPortInBufSize determina la dimensione del
+                   buffer utilizzato per la memorizzazione dei dati ricevuti.
+
+     <Altre info>  Si sconsiglia di impostare la dimensione del buffer di
+                   input ad un valore inferiore a:
+
+                      bps / (data bits + stop bits + 2) * pollingDelay / 1000.
+
+                   Impostare la dimensione del buffer di input ad una dimensione
+                   inferiore a quella di cui sopra, può provocare una perdita
+                   di dati.
+
+                   Non è possibile modificare ComPortInBufSize mentre si è
+                   connessi ad una porta seriale.
+
+   [COMPORTOUTBUFSIZE]
+
+     <Definizione> ComPortOutBufSize: word
+     <Default>     2048 bytes
+     <Published>   sì
+
+     <Descrizione> La proprietà ComPortOutBufSize determina la dimensione del
+                   buffer utilizzato per la memorizzazione dei dati inviati.
+
+     <Altre info>  Non è possibile modificare ComPortOutBufSize mentre si è
+                   connessi ad una porta seriale.
+
+   [COMPORTPOLLINGDELAY]
+
+     <Definizione> ComPortPollingDelay: word
+     <Default>     50 ms (0.05 secondi, 20 volte al secondo)
+     <Published>   sì
+
+     <Descrizione> La proprietà ComPortPollingDelay determina l'intervallo di
+                   tempo minimo (in milisecondi) da attendere prima di
+                   verificare se ci sono dati in arrivo dalla porta seriale.
+
+     <Altre info>  Più piccolo è l'intervallo di tempo, più volte in un secondo
+                   la porta seriale sarà controllata per eventuali dati in
+                   arrivo.
+                   Non impostare mai l'intervallo di tempo ad un valore troppo
+                   piccolo (<20ms), specialmente su macchine lente.
+                   Non impostate mai l'intervallo di tempo ad un valore troppo
+                   alto (>500ms), specialmente si si sta utilizzando una
+                   velocità di trasmissione elevata (>14400 bauds).
+
+                   Le modifiche apportate al valore di ComPortPollingDelay sono
+                   applicate immediatamente.
+
+   [ENABLEDTRONOPEN]
+
+     <Definizione> EnableDTROnOpen: boolean
+     <Default>     true
+     <Published>   sì
+
+     <Descrizione> La proprietà EnableDTROnOpen determina se il segnale DTR
+                   ('Data Terminal Ready') deve essere attivato al momento
+                   della connessione alla porta seriale (ossia quando si
+                   chiama Connect).
+
+     <Altre info>  Il segnale DTR è utilizzato quando si apre una porta seriale
+                   per la communicazione. I due dispositivi di comunicazione
+                   portano il segnale DTR al livello alto per comunicare che
+                   sono attivi.
+                   Il primo dispositivo seriale imposta il DTR al livello alto,
+                   e l'altro dispositivo risponde impostando anche il DSR al
+                   livello alto. Il DSR ('Data Set Ready') è il segnale DTR
+                   del secondo dispositivo visto dal primo dispositivo.
+
+                   I modems spesso indicano la disconnessione dalla linea
+                   telefonica impostanto il DSR al livello basso.
+                   Quando il PC porta il DTR al livello basso, i modems chiudono
+                   la connessione telefonica.
+
+                   Il valore di EnableDTROnOpen può essere modificato anche se
+                   si è già connessi ad una porta seriale, tuttavia, esso
+                   sarà preso in considerazione solo alla successiva connessione
+                   utilizzando Connect (se necessario chiamare Disconnect per
+                   sconnetersi e quindi Connect per riconnettersi alla porta
+                   seriale).
+
+   [COMPORTHANDLE]
+
+     <Definizione> ComPortHandle: THANDLE
+     <Default>     0 (non connesso)
+     <Published>   no (disponibile solo a run-time)
+
+     <Descrizione> La proprietà ComPortHandle contiene l' handle restituito da
+                   Windows per identificare univocamente la porta seriale in
+                   uso.
+                   Questo handle è necessario per alcune chiamate API, di solito
+                   per le TAPI.
+
+     <Altre info>  Impostando ComPortHandle ad un handle ottenuto da una delle
+                   funzioni TAPI sarà possible cedere il controllo della porta
+                   seriale a TCommPortDriver.
+
+                   Impostando ComPortHandle al valore 0 (zero), si ottiene la
+                   disconnessione e il rilascio (la chiusura) della porta
+                   seriale.
+
+                   Se si vuole che TCommPortDriver rilasci il controllo della
+                   seriale senza che questa venga chiusa, si imposti
+                   ComPortHandle al valore $FFFFFFFF.
+                   Il valore originario in ComPortHandle verrà perso e
+                   sostituito con 0 (=disconnesso): per non perdere tale valore
+                   è necessario memorizzarlo in una variabile prima di impostare
+                   ComPortHandle a $FFFFFFFF.
+
+ [ M E T O D I ]
+
+   [CREATE]
+
+     <Definizione> constructor Create( AOwner: TComponent )
+
+     <Descrizione> Il metodo Create alloca la memoria necessaria per contenere
+                   i dati del componente e inizializza i sui dati a valori
+                   di default.
+                   Il proprietario del componente è definito dal parametro
+                   AOwner.
+                   Se si crea un istanza di un componente chiamando Create, e si
+                   passa un valore valido in AOwner ( <> NIL ), sarà lo stesso
+                   proprietario a deallocare il componente prima di deallocare
+                   se stesso. Se non si vuole che il componente sia posseduto
+                   da un altro componente, si imposti AOwner a NIL.
+
+     <Risultato>   -
+
+     <Altre info>  Il metodo Create inizializza le proprietà del componente a
+                   valori di default. Tali valori di default sono:
+
+                   Proprietà/Eveno           Default
+                   -------------------------------------------------------------
+                   ComPort                   pnCOM2
+                   ComPortHandle             0 (non connesso)
+                   ComPortBaudRate           br9600
+                   ComPortDataBits           db8BITS
+                   FComPortStopBits          sb1BITS
+                   FComPortParity            ptNONE
+                   FComPortHwHandshaking     hhNONE
+                   FComPortSwHandshaking     shNONE
+                   FComPortInBufSize         2048 (bytes)
+                   FComPortOutBufSize        2048 (bytes)
+                   FComPortPollingDelay      50 (ms)
+                   FEnableDTROnOpen          true
+
+                   FComPortReceiveData       nil
+
+                   Se si è modificato il valore di una proprietà dall'Object
+                   Inspect di Delphi, tale valore verrà automaticamente caricato
+                   e non sarà necessario impostarlo da codice.
+
+   [FREE]
+
+     <Definizione> procedure Free
+
+     <Descrizione> Il metodo Free distrugge l'oggetto, dealloca la memoria da
+                   esso occupata e chiude la porta seriale.
+                   Non si deve mai deallocare il componente quando è in
+                   esecuzione uno dei suoi stessi 'event handlers'.
+
+     <Risultato>   -
+
+     <Altre info>  -
+
+   [CONNECT]
+
+     <Definizione> function Connect: boolean
+
+     <Descrizione> Il metodo Connect apre la porta seriale e avvia le procedure
+                   di controllo dei dati in arrivo (polling).
+
+     <Risultato>   TRUE : la porta seriale è stata aperta
+                   FALSE: - la porta seriale non esiste
+                          - oppure: la porta seriale è già impegnata
+                          - oppure: si è verificato un errore non previsto.
+
+     <Altre info>  Quando si chiama Connect, il componente attiverà un timer
+                   che controllerà se ci sono dati in arrivo.
+                   Se uno o più bytes di dati sono disponibili, verrà generato
+                   l' evento OnReceiveData.
+                   La porta seriale verrà controllata N=1000/ComPortPollingDelay
+                   volte al secondo e potranno essere ricevuti al massimo
+                   N*ComPortInBufSize bytes al secondo.
+                   Mantenendo le impostazioni di default (ComPortPollingDelay=50
+                   e ComPortInBufSize=2048) si potranno ricevere al massimo
+                   1000/50*2048 = 40KB di dati al secondo (ben oltre i circa
+                   12KB ottenibili con una connessione a 115200 bauds).
+
+   [DISCONNECT]
+
+     <Definizione> procedure Disconnect
+
+     <Descrizione> Il metodo Disconnect chiude (disconnette) la porta seriale
+                   e ferma il timer di controllo.
+                   Se la porta non è mai sta aperta (connessa), Disconnect
+                   non ha alcun effetto.
+                   Dopo aver chiuso la porta seriale, essa sarà resa disponibile
+                   a qualsiasi applicazione ne faccia richiesta.
+
+     <Risultato>   -
+
+     <Altre info>  Si veda ComPortHandle per come rilasciare il controllo della
+                   seriale senza chiuderla.
+
+   [CONNECTED]
+
+     <Definizione> function Connected: boolean
+
+     <Descrizione> Il metodo Connected restituisce un flag che indica se il
+                   componente sta controllando una porta seriale (se è
+                   connesso).
+
+     <Risultato>   TRUE : il componente controlla una porta seriale
+                          (connesso)
+                   FALSE: il componente non controlla una porta seriale
+                          (disconnesso)
+
+     <Altre info>  Chiamare Connected equivale a verificare se ComPortHandle
+                   è diverzo da zero.
+
+   [FLUSHBUFFERS]
+
+     <Definizione> procedure FlushBuffers( inBuf, outBuf: boolean );
+
+     <Descrizione> Il metodo FlushBuffers svuota (flush) tutti i dati presenti
+                   nel buffer di input, nel buffer di output o in entrambi.
+
+                   inBuf     outBuf      Descrizione
+                   -------------------------------------------------------------
+                   FALSE     FALSE       i buffers non vengono svuotati
+                   FALSE     TRUE        il buffer di output viene svuotato
+                   TRUE      FALSE       il buffer di input viene svuotato
+                   TRUE      TRUE        entrambi i buffers vengono svuotati
+
+     <Risultato>   -
+
+     <Altre info>  -
+
+   [SENDDATAEX]
+
+     <Definizione> function SendData( DataPtr: pointer;
+                                      DataSize: integer ): integer
+
+     <Descrizione> Il metodo SendData invia il contenuto di un blocco di memoria
+                   (DataPtr) grande DataSize bytes.
+                   Se il blocco di memoria è più grande dello spazio libero
+                   nel buffer di output, esso viene suddiviso in blocchi più
+                   piccoli e questi vengono inviati uno alla volta.
+                   La proprietà OutputTimeout definisce per quanto tempo questo
+                   metodo debba attendere che uno dei blocchi sia copiato nel
+                   buffer di output e quindi inviato attraverso la porta
+                   seriale.
+
+     <Risultato>   0 (zero): - la porta seriale non è stata aperta
+                             - oppure: DataSize è zero
+                             - oppure: non è stato possibile inviare i dati
+                                       poichè il buffer di output è pieno (non è
+                                       stato trasmesso nemmeno uno dei bytes che
+                                       già stavano nel buffer di output ed e
+                                       sono trascorsi almeno OutputTimeout
+                                       millisecondi dall'ultimo tentativo).
+                   = DataSize: tutti i dati sono stati inviati ( o almeno
+                               copiati nel buffer di output )
+                   < 0: non tutti i dati sono stati inviati perchè il buffer
+                        si è saturato e sono trascorsi almeno OutputTimeout
+                        millisecondi dall'ultimo tentativo).
+
+     <Altre info>  -
+
+   [OUTFREESPACE]
+
+     <Definizione> function OutFreeSpace: word;
+
+     <Descrizione> Il metodo OutFreeSpace restituisce il numero di bytes
+                   liberi nel buffer di output.
+
+     <Risultato>   Numbero di bytes liberi
+
+     <Altre info>  E' possibile aumentare la dimensione del buffer di output
+                   tramite la proprietà ComPortOutBufSize.
+                   Per svuotare il buffer di output si chiami FlushBuffers(...).
+
+   [SENDSTRING]
+
+     <Definizione> function SendString( s: string ): boolean
+
+     <Descrizione> Il metodo SendString invia il contenuto di una stringa
+                   (formato Pascal) utilizzando la porta seriale.
+                   Si veda SendData per una descrizione dei problemi di timeout.
+
+     <Risultato>   TRUE : la stringa è stata inviata
+                   FALSE: - la porta seriale non è stata aperta
+                          - oppure: non tutti i dati sono stati inviati a causa
+                                    di un timeout
+
+     <Altre info>  -
+
+   [SENDZSTRING]
+
+     <Definizione> function SendZString( s: pchar ): boolean
+
+     <Descrizione> Il metodo SendZString invia il contenuto di una stringa
+                   (formato C, terminata con #0) utilizzando la porta seriale.
+                   Si veda SendData per una descrizione dei problemi di timeout.
+
+     <Risultato>   TRUE : la stringa è stata inviata
+                   FALSE: - la porta seriale non è stata aperta
+                          - oppure: non tutti i dati sono stati inviati a causa
+                                    di un timeout
+
+
+     <Altre info>  SendZString( zstr ) equivale a:
+
+                     SendData( zstr, strlen(zstr) )
+
+   [TOGGLEDTR]
+
+     <Definizione> procedure ToggleDTR( onOff: boolean )
+
+     <Descrizione> Il metodo ToggleDTR imposta lo stato della linea DTR ('Data
+                   Terminal Ready').
+                   Questi sono i possibili valori di OnOff:
+
+                   OnOff        Significato
+                   -------------------------------------------------------------
+                   TRUE         imposta DTR al livello alto ('space')
+                   FALSE        imposta DTR al livello basso ('mark')
+
+     <Risultato>   -
+
+     <Altre info>  -
+
+   [TOGGLERTS]
+
+     <Definizione> procedure ToggleRTS( onOff: boolean )
+
+     <Descrizione> Il metodo ToggleRTS imposta lo stato della linea RTS
+                   ('Request To Send').
+                   Questi sono i possibili valori di OnOff:
+
+                   OnOff        Significato
+                   -------------------------------------------------------------
+                   TRUE         imposta RTS al livello alto ('space')
+                   FALSE        imposta RTS al livello basso ('mark')
+
+     <Risultato>   -
+
+     <Altre info>  Non si utilizzi mai ToggleRTS se si sta utilizzando il
+                   controllo di flusso hardware (RTS/CTS).
+
+ [ E V E N T S ]
+
+   [ONRECEIVEDATA]
+
+     <Definizione> property OnReceiveData: TComPortReceiveDataEvent
+     <Handler>     TComPortReceiveDataEvent =
+                      procedure( Sender: TObject; DataPtr: pointer;
+                                 DataSize: integer ) of object
+     <Published>   sì
+
+     <Descrizione> L'evento OnReceiveData ha luogo quando ci sono dati
+                   disponibili nel buffer di input.
+                   Questo evento è asincrono, ossia può aver luogo in qualsiasi
+                   momento da quando la porta seriale è stata aperta.
+
+                   Il parametro DataPtr contiene l'indirizzo di un buffer
+                   temporaneo contenente i dati ricevuti e il parametro
+                   DataSize contiene il numero di bytes memorizzati nel buffer.
+                   Il primo byte ricevuto si trova all'indirizzo DataPtr, il
+                   secondo all'indirizzo DataPtr+1, è così via.
+
+     <Risultato>   -
+
+     <Altre info>  I dati vengono copiati dal buffer di input primario in un
+                   buffer secondario prima che l'evento OnReceiveData abbia
+                   luogo.
+                   Se non si provvede ad implementare il gestore dell'evento,
+                   tutti i dati in arrivo andranno naturalmente persi.
+
+

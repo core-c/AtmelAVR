@@ -1,0 +1,2 @@
+@ECHO OFF
+"G:\Program Files\Atmel\AVR Tools\AvrAssembler2\avrasm2.exe" -S "G:\Program Files\Atmel\UJE\PS2_Knop\labels.tmp" -fI -W+ie -I "G:\Program Files\Atmel\UJE\Incude" -o "G:\Program Files\Atmel\UJE\PS2_Knop\PS2_Knop.hex" -d "G:\Program Files\Atmel\UJE\PS2_Knop\PS2_Knop.obj" -e "G:\Program Files\Atmel\UJE\PS2_Knop\PS2_Knop.eep" -m "G:\Program Files\Atmel\UJE\PS2_Knop\PS2_Knop.map" "G:\Program Files\Atmel\UJE\PS2_Knop\PS2_Knop.asm"

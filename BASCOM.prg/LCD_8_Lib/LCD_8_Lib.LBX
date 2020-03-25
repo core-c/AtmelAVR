@@ -1,0 +1,483 @@
+Comment = Compiled LIB file, no comment included
+
+.equ Pin_as_input = 0
+.equ Pin_as_output = 1
+.equ Port_as_input = &H00
+.equ Port_as_output = &HFF
+.equ Input_port_tris = &H00
+.equ Input_port_pull = &HFF
+.equ Eos_symbol = "$"
+.equ Addrline0 = &H00
+.equ Addrline1 = &H40
+.equ Addrline2 = &H14
+.equ Addrline3 = &H54
+.equ Rs_command = 0
+.equ Rs_data = 1
+.equ Rw_write = 0
+.equ Rw_read = 1
+.equ Cmd_ddramaddress = &B10000000
+.equ Cmd_cgramaddress = &B01000000
+.equ Cmd_functionset = &B00100000
+.equ Cmd_cursordisplayshift = &B00010000
+.equ Cmd_displaymode = &B00001000
+.equ Cmd_entrymode = &B00000100
+.equ Cmd_cursorhome = &B00000010
+.equ Cmd_clear = &B00000001
+.equ Mask_busyflag = &B10000000
+.equ Mask_ddramaddress = &B01111111
+.equ Mask_cgramaddress = &B00111111
+.equ Mask_functionset = &B00011100
+.equ Mask_cursordisplayshift = &B00001100
+.equ Mask_displaymode = &B00000111
+.equ Mask_entrymode = &B00000011
+.equ Data_len_4 = &B00000000
+.equ Data_len_8 = &B00010000
+.equ Line_count_1 = &B00000000
+.equ Line_count_2 = &B00001000
+.equ Font_5x7 = &B00000000
+.equ Font_5x10 = &B00000100
+.equ Shift_display_left = &B00000000
+.equ Shift_display_right = &B00001000
+.equ Shift_cursor_left = &B00000000
+.equ Shift_cursor_right = &B00000100
+.equ Display_off = &B00000000
+.equ Display_on = &B00000100
+.equ Cursor_off = &B00000000
+.equ Cursor_on = &B00000010
+.equ Cursor_blink_off = &B00000000
+.equ Cursor_blink_on = &B00000001
+.equ Auto_decrement = &B00000000
+.equ Auto_increment = &B00000010
+.equ No_display_shift = &B00000000
+.equ Display_shift = &B00000001
+[lcd_setctrlpins]
+Lcd_setctrlpins:
+ * Cbi Lcd_ctrl_ddr , Lcd_rs
+ * Cbi Lcd_ctrl_ddr , Lcd_rw
+ * Cbi Lcd_ctrl_ddr , Lcd_e
+ * Cbi Lcd_ctrl_port , Lcd_rs
+ * Cbi Lcd_ctrl_port , Lcd_rw
+ * Cbi Lcd_ctrl_port , Lcd_e
+ * Sbi Lcd_ctrl_ddr , Lcd_rs
+ * Sbi Lcd_ctrl_ddr , Lcd_rw
+ * Sbi Lcd_ctrl_ddr , Lcd_e
+ * Cbi Lcd_ctrl_port , Lcd_rs
+ * Cbi Lcd_ctrl_port , Lcd_rw
+ * Cbi Lcd_ctrl_port , Lcd_e
+.OBJ 9508
+[end]
+[lcd_setdataport_as_output]
+Lcd_setdataport_as_output:
+.OBJ 930F
+.OBJ E000
+ * Out Lcd_data_ddr , R16
+.OBJ E000
+ * Out Lcd_data_port , R16
+.OBJ EF0F
+ * Out Lcd_data_ddr , R16
+.OBJ E000
+ * Out Lcd_data_port , R16
+.OBJ 910F
+.OBJ 9508
+[end]
+[lcd_setdataport_as_input]
+Lcd_setdataport_as_input:
+.OBJ 930F
+.OBJ E000
+ * Out Lcd_data_ddr , R16
+.OBJ E000
+ * Out Lcd_data_port , R16
+.OBJ 910F
+.OBJ 9508
+[end]
+[lcd_send]
+Lcd_send:
+.OBJ 0
+.OBJ 0
+.OBJ 0
+ * Sbi Lcd_ctrl_port , Lcd_e
+ * Out Lcd_data_port , R16
+ * Cbi Lcd_ctrl_port , Lcd_e
+.OBJ 9508
+[end]
+[lcd_receive]
+$EXTERNAL Lcd_delay_2us
+Lcd_receive:
+ * Sbi Lcd_ctrl_port , Lcd_e
+ rcall LCD_Delay_2us
+ * In R16 , Lcd_data_in
+ * Cbi Lcd_ctrl_port , Lcd_e
+.OBJ 9508
+[end]
+[lcd_waitwhilebusy]
+$EXTERNAL Lcd_setdataport_as_input, Lcd_receive, Lcd_setdataport_as_output
+Lcd_waitwhilebusy:
+.OBJ 930F
+ rcall LCD_SetDATAPort_AS_INPUT
+ * Cbi Lcd_ctrl_port , Lcd_rs
+ * Sbi Lcd_ctrl_port , Lcd_rw
+Waitwhileflag1:
+ rcall LCD_Receive
+.OBJ 7800
+ brne WaitWhileFlag1
+ * Cbi Lcd_ctrl_port , Lcd_rw
+ rcall LCD_SetDATAPort_AS_OUTPUT
+.OBJ 910F
+.OBJ 9508
+[end]
+[lcd_command]
+$EXTERNAL Lcd_waitwhilebusy, Lcd_send
+Lcd_command:
+ rcall LCD_WaitWhileBusy
+ * Cbi Lcd_ctrl_port , Lcd_rs
+ * Cbi Lcd_ctrl_port , Lcd_rw
+ rcall LCD_Send
+.OBJ 9508
+[end]
+[lcd_command_]
+$EXTERNAL Lcd_send
+Lcd_command_:
+ * Cbi Lcd_ctrl_port , Lcd_rs
+ * Cbi Lcd_ctrl_port , Lcd_rw
+ rcall LCD_Send
+.OBJ 9508
+[end]
+[lcd_data]
+$EXTERNAL Lcd_waitwhilebusy , Lcd_send
+Lcd_data:
+ rcall LCD_WaitWhileBusy
+ * Sbi Lcd_ctrl_port , Lcd_rs
+ * Cbi Lcd_ctrl_port , Lcd_rw
+ rcall LCD_Send
+.OBJ 9508
+[end]
+[lcd_read_data]
+$EXTERNAL Lcd_waitwhilebusy , Lcd_delay_100us , Lcd_setdataport_as_input , Lcd_receive , Lcd_setdataport_as_output
+Lcd_read_data:
+ rcall LCD_WaitWhileBusy
+ rcall LCD_Delay_100us
+ rcall LCD_SetDATAPort_AS_INPUT
+ * Sbi Lcd_ctrl_port , Lcd_rs
+ * Sbi Lcd_ctrl_port , Lcd_rw
+ rcall LCD_Receive
+ * Cbi Lcd_ctrl_port , Lcd_rw
+ rcall LCD_SetDATAPort_AS_OUTPUT
+.OBJ 9508
+[end]
+[lcd_functionset]
+$EXTERNAL Lcd_waitwhilebusy , Lcd_command_
+Lcd_functionset:
+ rcall LCD_WaitWhileBusy
+.OBJ 710C
+.OBJ 6200
+ rcall LCD_Command_
+.OBJ 9508
+[end]
+[lcd_functionset_]
+$EXTERNAL Lcd_command_
+Lcd_functionset_:
+.OBJ 710C
+.OBJ 6200
+ rcall LCD_Command_
+.OBJ 9508
+[end]
+[lcd_clear]
+$EXTERNAL Lcd_command
+Lcd_clear:
+.OBJ 930F
+.OBJ E001
+ rcall LCD_Command
+.OBJ 910F
+.OBJ 9508
+[end]
+[lcd_home]
+$EXTERNAL Lcd_command
+Lcd_home:
+.OBJ 930F
+.OBJ E002
+ rcall LCD_Command
+.OBJ 910F
+.OBJ 9508
+[end]
+[lcd_entrymode]
+$EXTERNAL Lcd_command
+Lcd_entrymode:
+.OBJ 7003
+.OBJ 6004
+ rcall LCD_Command
+.OBJ 9508
+[end]
+[lcd_displaymode]
+$EXTERNAL Lcd_command
+Lcd_displaymode:
+.OBJ 7007
+.OBJ 6008
+ rcall LCD_Command
+.OBJ 9508
+[end]
+[lcd_cursordisplayshift]
+$EXTERNAL Lcd_command
+Lcd_cursordisplayshift:
+.OBJ 700C
+.OBJ 6100
+ rcall LCD_Command
+.OBJ 9508
+[end]
+[lcd_setchargenaddr]
+$EXTERNAL Lcd_command
+Lcd_setchargenaddr:
+.OBJ 730F
+.OBJ 6400
+ rcall LCD_Command
+.OBJ 9508
+[end]
+[lcd_setdisplayaddr]
+$EXTERNAL Lcd_command
+Lcd_setdisplayaddr:
+.OBJ 6800
+ rcall LCD_Command
+.OBJ 9508
+[end]
+[lcd_getdisplayaddr]
+$EXTERNAL Lcd_waitwhilebusy , Lcd_setdataport_as_input , Lcd_receive , Lcd_setdataport_as_output
+Lcd_getdisplayaddr:
+ rcall LCD_WaitWhileBusy
+ rcall LCD_SetDATAPort_AS_INPUT
+ * Cbi Lcd_ctrl_port , Lcd_rs
+ * Sbi Lcd_ctrl_port , Lcd_rw
+ rcall LCD_Receive
+ * Andi R16 , Mask_ddramaddress
+ * Cbi Lcd_ctrl_port , Lcd_rw
+ rcall LCD_SetDATAPort_AS_OUTPUT
+.OBJ 9508
+[end]
+[lCD_Init]
+$EXTERNAL Lcd_setctrlpins , Lcd_setdataport_as_output , Lcd_delay_15ms , LCD_Delay_4_1ms , Lcd_functionset_ , Lcd_functionset , Lcd_displaymode , Lcd_clear , Lcd_home , Lcd_entrymode
+LCD_Init:
+.OBJ 930F
+ rcall LCD_SetCTRLPins
+ rcall LCD_SetDATAPort_AS_OUTPUT
+ rcall LCD_Delay_15ms
+ rcall LCD_Delay_15ms
+.OBJ E100
+ rcall LCD_FunctionSet_
+ rcall LCD_Delay_4_1ms
+.OBJ E100
+ rcall LCD_FunctionSet_
+ rcall LCD_Delay_100us
+.OBJ E100
+ rcall LCD_FunctionSet_
+.OBJ E108
+ rcall LCD_FunctionSet
+.OBJ E000
+ rcall LCD_DisplayMode
+ rcall LCD_Clear
+ rcall LCD_Home
+.OBJ E002
+ rcall LCD_EntryMode
+.OBJ E007
+ rcall LCD_DisplayMode
+ rcall LCD_Delay_15ms
+.OBJ 910F
+.OBJ 9508
+[end]
+[LCD_XY2Addr]
+LCD_XY2Addr:
+.OBJ 932F
+.OBJ 3020
+ brne _XY1
+.OBJ E020
+ rjmp _XY
+_XY1:
+.OBJ 3021
+ brne _XY2
+.OBJ E420
+ rjmp _XY
+_XY2:
+.OBJ 3022
+ brne _XY3
+.OBJ E124
+ rjmp _XY
+_XY3:
+.OBJ 3023
+ brne _XY
+.OBJ E524
+_XY:
+.OBJ 2F02
+.OBJ F01
+.OBJ 912F
+.OBJ 9508
+[end]
+[LCD_Addr2XY]
+LCD_Addr2XY:
+.OBJ 933F
+.OBJ 3504
+ brlo _Addr2
+.OBJ E534
+.OBJ E023
+ rjmp _Addr
+_Addr2:
+.OBJ 3400
+ brlo _Addr3
+.OBJ E430
+.OBJ E021
+ rjmp _Addr
+_Addr3:
+.OBJ 3104
+ brlo _Addr1
+.OBJ E134
+.OBJ E022
+ rjmp _Addr
+_Addr1:
+.OBJ E030
+.OBJ E020
+_Addr:
+.OBJ 2F10
+.OBJ 1B13
+.OBJ 913F
+.OBJ 9508
+[end]
+[LCD_SetCursorXY]
+$EXTERNAL LCD_XY2Addr, LCD_SetDisplayAddr
+LCD_SetCursorXY:
+.OBJ 930F
+ rcall LCD_XY2Addr
+ rcall LCD_SetDisplayAddr
+.OBJ 910F
+.OBJ 9508
+[end]
+[LCD_GetCursorXY]
+$EXTERNAL LCD_GetDisplayAddr, LCD_Addr2XY
+LCD_GetCursorXY:
+.OBJ 930F
+ rcall LCD_GetDisplayAddr
+ rcall LCD_Addr2XY
+.OBJ 910F
+.OBJ 9508
+[end]
+[lcd_delay_2us]
+Lcd_delay_2us:
+.OBJ 0
+.OBJ 0
+.OBJ 0
+.OBJ 0
+.OBJ 0
+.OBJ 0
+.OBJ 0
+.OBJ 0
+.OBJ 9508
+[end]
+[lcd_delay_100us]
+Lcd_delay_100us:
+.OBJ 930F
+.OBJ E803
+Innerloop100us:
+.OBJ 950A
+ brne innerloop100us
+.OBJ 910F
+.OBJ 9508
+[end]
+[lcd_delay_15ms]
+Lcd_delay_15ms:
+.OBJ 930F
+.OBJ E904
+Innerloop15ms:
+ rcall LCD_Delay_100us
+.OBJ 950A
+ brne innerloop15ms
+.OBJ E703
+Innerloop15ms_:
+.OBJ 950A
+ brne innerloop15ms_
+.OBJ 0
+.OBJ 910F
+.OBJ 9508
+[end]
+[lcd_delay_4_1ms]
+Lcd_delay_4_1ms:
+.OBJ 930F
+.OBJ E208
+Innerloop4_1ms:
+ rcall LCD_Delay_100us
+.OBJ 950A
+ brne innerloop4_1ms
+.OBJ E50C
+Innerloop4_1ms_:
+.OBJ 950A
+ brne innerloop4_1ms_
+.OBJ 0
+.OBJ 910F
+.OBJ 9508
+[end]
+[lcd_initialize]
+$EXTERNAL LCD_Init
+LCD_Initialize:
+ rcall LCD_Init
+.OBJ 9508
+[end]
+[lcd_put]
+$EXTERNAL Lcd_data
+LCD_Put:
+.OBJ 930F
+.OBJ 81A8
+.OBJ 81B9
+.OBJ 910C
+ rcall LCD_Data
+.OBJ 910F
+.OBJ 9508
+[end]
+[lcd_get]
+$EXTERNAL Lcd_read_data
+Lcd_get:
+.OBJ 930F
+ rcall LCD_Read_Data
+.OBJ 81A8
+.OBJ 81B9
+.OBJ 930C
+.OBJ 910F
+.OBJ 9508
+[end]
+[LCD_Cls]
+$EXTERNAL Lcd_clear
+LCD_Cls:
+ rcall Lcd_clear
+.OBJ 9508
+[end]
+[LCD_CursorHome]
+$EXTERNAL Lcd_home
+LCD_CursorHome:
+ rcall Lcd_home
+.OBJ 9508
+[end]
+[LCD_SetCursor]
+$EXTERNAL LCD_SetCursorXY
+LCD_SetCursor:
+.OBJ 931F
+.OBJ 932F
+.OBJ 81AA
+.OBJ 81BB
+.OBJ 911C
+.OBJ 81A8
+.OBJ 81B9
+.OBJ 912C
+ rcall LCD_SetCursorXY
+.OBJ 912F
+.OBJ 911F
+.OBJ 9508
+[end]
+[LCD_GetCursor]
+$EXTERNAL LCD_GetCursorXY
+LCD_GetCursor:
+.OBJ 931F
+.OBJ 932F
+ rcall LCD_GetCursorXY
+.OBJ 81AA
+.OBJ 81BB
+.OBJ 931C
+.OBJ 81A8
+.OBJ 81B9
+.OBJ 932C
+.OBJ 912F
+.OBJ 911F
+.OBJ 9508
+[end]

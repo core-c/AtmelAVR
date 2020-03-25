@@ -1,0 +1,719 @@
+;-------------------------------------------------------------------
+;--- Een DCC-Zender voor de trein-modelbouw
+;---
+;---	Output op Pin D6 op de AT90S8535
+;---	CK = 7.372800 MHz
+;---	TCK = CK /8, dus een timertick per microseconde
+;---	DCC protocol: "1" duur tussen 52us - 64us, "0" duur tussen 90us - 10000us (10ms)
+;---	(Het verschil in dutycycle tussen perioden A & B, mag niet zijn > 6us)
+;---	De tijd tussen 2 packets moet zijn >= 5 ms.
+;---
+;---	          __    __
+;---	         |  |  |  |  |
+;---	         |pB|  |  |  |
+;---	------+--+  +--+  +--+
+;---	      .pA.  .  .  .  .      pA = periode A
+;---	      .  .  .  .  .  .      pB = periode B
+;---	      ....  ....  ....	     . = signaal door booster gemaakt
+;---
+;---	         *     *     *       * = verwerk periode A
+;---	      #     #     #          # = verwerk periode B
+;---
+;---
+;--- BitStream in SRAM: '0'=0-bit, '1'=1-bit, '*'=ongeldige bit, ' '=pulsduur te lang/packet-end
+;---
+;-------------------------------------------------------------------
+
+
+;--- INCLUDE FILES --------------------\
+;.nolist
+.include "8535def.inc"					; AVR AT90S8535
+;.list
+;--------------------------------------/
+
+
+
+
+;--- COMPILER DIRECTIVES --------------\
+.equ Output_To_COM 		= 0				; ontvangen bits uitvoeren naar de COM: poort
+.equ Output_To_LED 		= 0				; ontvangen bits uitvoeren naar de LED's
+;--------------------------------------/
+
+
+
+
+;--- CONSTANTEN -----------------------\
+.equ CK 			= 7372800			; CPU clock frequentie	; 7372800
+.equ TCK 			= CK/8				; timer1 frequentie		; CK/8
+.equ Min1 			= 0.000052 * TCK	; duur van een (halve/positieve) bit (in timerticks)
+.equ Max1 			= 0.000064 * TCK
+.equ Min0 			= 0.000090 * TCK
+.equ Max0 			= 0.010000 * TCK
+.equ TimeOutValue	= 0.009 * TCK		; 18 milliseconden hele bit duur
+; connecties met AVR
+.equ CaptureDDR			= DDRD
+.equ CapturePort		= PORTD
+.equ CaptureIn			= PIND
+.equ CapturePin			= PD6
+; LED's
+.equ LED_DDR			= DDRC
+.equ LED_Port			= PORTC
+.equ LED_Error			= PC7
+.equ LED_Bit			= PC6
+; Basic Accessory Decoder basis-adres
+.equ BAD_BaseAddress	= 1				; Het basisadres voor de wissels
+; strings/chars
+.equ CHR_0				= '0'
+.equ CHR_1				= '1'
+.equ CHR_Error			= '*'
+.equ CHR_Timeout		= ' '
+; stappen in het proces: ontvangen packet
+.equ _Preamble			= 0				; wachten totdat PreambleCount=12
+.equ _DataStartBit		= 3				; ==0? ..een data-byte volgt, ==1? ..packet-end
+.equ _DataByte			= 4				; 8-bits ontvangen, daarna goto step 3 _DataStartBit
+;.equ _PacketEndBit		= 3
+;--------------------------------------/
+
+
+
+
+;--- REGISTER ALIASSEN ----------------\
+.def temp			= R16				; Een register voor algemeen gebruik
+.def temp2			= R17				; nog 1..
+.def TimeOut		= R18				; De time-out vlag
+.def PreambleCount	= R19				; aantal sequentiele "1"-bits ontvangen
+; huidige stap in het proces: ontvangen packet
+.def Step			= R20
+.def DataByte		= R21
+.def BAD_AddressH	= R22
+.def BAD_AddressL	= R23
+.def temp3			= R24
+.def temp4			= R25
+;.def XL								; pointer naar te schrijven adres in PacketStream
+;.def XH
+;.def YL								; bitduur in timerticks voor periode A
+;.def YH
+;.def ZL								; bitduur in timerticks voor periode B
+;.def ZH
+;--------------------------------------/
+
+
+
+;--- Variablelen in SRAM --------------\
+.DSEG
+PacketStream:	.BYTE 10				; 10 bytes data voor de stream
+;--------------------------------------/
+
+
+;--- De AVR-AT90S8535 "vector"-tabel --\
+.CSEG
+.org $0000								; Het begin van de vector-tabel op adres 0 van het RAM
+	rjmp RESET							; Reset Handler
+	reti								; External Interrupt0 Vector Address
+	reti								; External Interrupt1 Vector Address
+	reti								; Timer2 compare match Vector Address
+	reti								; Timer2 overflow Vector Address
+	reti								; Timer1 Input Capture Vector Address
+	reti ;rjmp Timer_Interrupt_CompareA	; Timer1 Output Compare A Interrupt Vector Address
+	reti								; Timer1 Output Compare B Interrupt Vector Address
+	reti								; Overflow1 Interrupt Vector Address
+	reti								; Overflow0 Interrupt Vector Address
+	reti								; SPI Interrupt Vector Address
+	reti								; UART Receive Complete Interrupt Vector Address
+	reti								; UART Data Register Empty Interrupt Vector Address
+	reti								; UART Transmit Complete Interrupt Vector Address
+	reti								; ADC Conversion Complete Interrupt Vector Address
+	reti								; EEPROM Write Complete Interrupt Vector Address
+	reti								; Analog Comparator Interrupt Vector Address
+;--------------------------------------/
+
+
+
+
+
+;--- INCLUDE FILES --------------------\
+.include "RS232.asm"					; UART routines
+.include "NumToStr.asm"					; nummers afbeelden
+;--------------------------------------/
+
+
+
+
+;---------------------------------------
+;--- MACRO's
+;--------------------------------------\
+; De stack-pointer instellen op het einde van het RAM
+.MACRO initStackPointer
+	ldi		temp2, high(RAMEND)
+	ldi		temp, low(RAMEND)
+	out		SPH, temp2
+	out		SPL, temp
+.ENDMACRO
+
+
+.MACRO LED_Off;(LED)
+	cbi		LED_Port, @0				; LED uit
+.ENDMACRO
+
+.MACRO LED_On;(LED)
+	sbi		LED_Port, @0				; LED aan
+.ENDMACRO
+
+
+.MACRO ResetCounter
+	; de counter op 0 instellen
+	clr		temp
+	out		TCNT1H, temp
+	out		TCNT1L, temp
+.ENDMACRO
+
+.MACRO ReadCounter;(Dutycycle_LOW, Dutycycle_HIGH : register)
+	; de timercounter uitlezen in register "Dutycycle"
+	in		@0, TCNT1L
+	in		@1, TCNT1H
+.ENDMACRO
+
+
+.MACRO WaitFor1
+	; wacht op de volgende omhooggaande flank..
+_0:	sbis	CaptureIn, CapturePin		;
+	rjmp	_0
+.ENDMACRO
+
+.MACRO WaitFor0
+	; wacht op de volgende omlaaggaande flank..
+_0:	sbic	CaptureIn, CapturePin		;
+	rjmp	_0
+.ENDMACRO
+
+
+;--- Macro TestPeriode
+.MACRO TestPeriode;(Dutycycle_LOW, Dutycycle_HIGH : register)
+	; test of de bit geldig is; dwz:   (# betekent ongeldig)
+	;
+	; #####|      1      |##########|      0      |#####
+	;      ^             ^          ^             ^
+	;      Min1          Max1       Min0          Max0
+	;
+
+	; Dutycycle < Min1 ?
+	cpi		@0, low(Min1)
+	ldi		temp, high(Min1)
+	cpc		@1, temp
+	brlo	_2							; bit ongeldig
+	; Dutycycle <= Max1 ?
+	cpi		@0, low(Max1+1)
+	ldi		temp, high(Max1+1)
+	cpc		@1, temp
+	brlo	_1							; geldige "1"
+	; Dutycycle < Min0 ?
+	cpi		@0, low(Min0)
+	ldi		temp, high(Min0)
+	cpc		@1, temp
+	brlo	_2							; bit ongeldig
+	; Dutycycle <= Max0 ?
+	cpi		@0, low(Max0+1)
+	ldi		temp, high(Max0+1)
+	cpc		@1, temp
+	brlo	_0							; geldige "0"
+_2:	;ongeldige bit
+	.if Output_To_LED == 1
+		LED_On LED_Error				; Error LED aan (ongeldig)
+		LED_Off LED_Bit					; Bit LED uit
+	.endif
+	.if Output_To_COM == 1
+		ldi		temp, CHR_Error
+		;rcall	UART_transmit
+_4:		sbis	USR, UDRE
+		rjmp	_4
+		out		UDR, temp
+	.endif
+	rjmp	_3
+_0:	; een geldige "0"
+	VERWERK0
+	.if Output_To_LED == 1
+		LED_Off LED_Error				; Error LED uit (geldig)
+		LED_Off LED_Bit					; Bit LED uit ("0")
+	.endif
+	.if Output_To_COM == 1
+		ldi		temp, CHR_0
+		;rcall	UART_transmit
+_5:		sbis	USR, UDRE
+		rjmp	_5
+		out		UDR, temp
+	.endif
+	rjmp	_3
+_1:	; een geldige "1"
+	VERWERK1
+	.if Output_To_LED == 1
+		LED_Off LED_Error				; Error LED uit (geldig)
+		LED_On LED_Bit					; Bit LED aan ("1")
+	.endif
+	.if Output_To_COM == 1
+		ldi		temp, CHR_1
+		;rcall	UART_transmit
+_6:		sbis	USR, UDRE
+		rjmp	_6
+		out		UDR, temp
+	.endif
+_3:	
+.ENDMACRO
+
+
+.MACRO VERWERK0
+	cpi		Step, _Preamble
+	brne	_3
+	cpi		PreambleCount, 12			; Preamble = 12 seq. "1"-bits ontvangen
+	brlo	_0
+	; PacketStartBit ontvangen. De preamble is binnen, volgende stap
+	ldi		Step, _DataByte
+	ldi		DataByte, 1
+	rjmp	_0
+
+_3:	cpi		Step, _DataStartBit
+	brne	_1
+	; er is een "0"-bit ontvangen als sein DataStartBit
+	ldi		Step, _DataByte
+	ldi		DataByte, 1
+	rjmp	_0
+
+_1:	cpi		Step, _DataByte
+	brne	_0
+	lsl		DataByte
+	brcc	_0
+	; byte is binnen.
+	ldi		Step, _DataStartBit
+
+_2:	; bewaren in SRAM buffer
+	PushByteToStream DataByte
+;	; afbeelden op COM:
+;	mov		R16, DataByte
+;	rcall	HexByte						; afbeelden op COM:
+
+_0:	clr		PreambleCount				; Preamble detectie resetten
+	
+.ENDMACRO
+
+.MACRO VERWERK1
+	inc		PreambleCount				; Preamble detectie ophogen
+_1:	cpi		Step, _DataByte
+	brne	_2
+	lsl		DataByte
+	brcc	_3
+	; byte is binnen.
+	ldi		Step, _DataStartBit
+	ori		DataByte, 1
+	; bewaren in SRAM buffer
+	PushByteToStream DataByte
+;	; afbeelden op COM:
+;	mov		R16, DataByte
+;	rcall	HexByte						; afbeelden op COM:
+	rjmp	_0
+_3:	ori		DataByte, 1
+	rjmp	_0
+
+_2:	cpi		Step, _DataStartBit
+	breq	_4
+	rjmp	_0
+	; het is een Packet-End-Bit.
+_4:	ldi		Step, _Preamble
+	;rcall	UART_Space
+	; het packet in de SRAM buffer afbeelden
+	ProcessPacket
+_0:
+.ENDMACRO
+
+
+
+.MACRO ResetStream
+	ldi		XL, low(PacketStream)
+	ldi		XH, high(PacketStream)
+.ENDMACRO
+
+.MACRO PushByteToStream;(Value:register)
+	; X verwijst naar het volgende te schrijven adres in de PacketStream-buffer..
+	st		X+, @0						; [X] := @0,  X++
+.ENDMACRO
+
+.MACRO ProcessPacket
+; 00000000 00000000 00000000	Reset packet
+; 11111111 00000000 11111111	Idle packet
+; 00000000 01DC0001 EEEEEEEE	Broadcast stop
+
+;Basic Accessory Decoder Packet Format
+;The format for packets intended for Accessory Digital Decoders is:
+;{preamble} 0 10AAAAAA 0 1AAACDDD 0 EEEEEEEE 1
+
+	; X verwijst naar de byte net na einde PacketStream-buffer..
+	; dus: Aantal bytes in buffer = (X - PacketStream)
+	lds		R16, PacketStream			; 1e byte in de buffer lezen
+	cpi		R16, $FF					; IDLE packet?
+	brne	_10							; ja? klaar..
+	rjmp	_0
+_10:;adres voor: 	Basic Accessory Decoders with 9 bit addresses and
+	;				Extended Accessory Decoders with 11-bit addresses
+	;adresbereik:	10000000-10111111
+	sbrs	R16, 7						; hoogste bit gezet = Accessory Decoders
+	rjmp	_0
+	cpi		R16, 0b11000000				; binnen bereik?
+	;brsh	_0
+	brlo	_11
+	breq	_11
+	rjmp	_0
+
+_11:; we hebben een Accessory Decoder adres te pakken..
+	; Nu het slave-adres bepalen:
+	clr		BAD_AddressH
+	andi	R16, 0b00111111
+	lds		BAD_AddressL, PacketStream+1			; 2e byte in de buffer lezen
+	com		BAD_AddressL
+	andi	BAD_AddressL, 0b01110000
+	lsl		BAD_AddressL
+	lsl		BAD_AddressL
+	rol		BAD_AddressH
+	add		BAD_AddressL, R16
+	; BAD_AddressH = MSB adres, BAD_AddressL = LSB adres
+
+;DCC adres afbeelden ---------------
+; adres
+push	ZL
+push	ZH
+mov		ZH, BAD_AddressH
+mov		ZL, BAD_AddressL
+rcall	Hex							; afbeelden op COM:
+rcall	UART_Space
+pop		ZH
+pop		ZL
+;-----------------------------------
+
+
+
+	; BAD_Address==BAD_BaseAddress+0?   wissel zit op poortA
+	; BAD_Address==BAD_BaseAddress+1?   wissel zit op poortB
+	; BAD_Address==BAD_BaseAddress+2?   wissel zit op poortC
+
+
+
+	;
+	; nu het subadres: 2e byte DDD (1AAACDDD)
+	;"DDD Bits 1 and 2 of byte two is used to indicate which of 4 pairs of outputs the packet is controlling" op PORTC pin C(R16)
+	lds		R16, PacketStream+1				; 2e byte in de buffer lezen
+	andi	R16, 0b00000110
+	lsr		R16
+	; R16 bevat nu een waarde [0..3]		; de specifieke wissel op 1 DCC-adres
+
+;Wissel sub-adres afbeelden --------
+push	R16
+rcall	HexByte						; afbeelden op COM:
+rcall	UART_Space
+pop		R16
+;-----------------------------------
+
+
+
+	; het 3e DDD bit voor selectie welke output
+	lds		ZL, PacketStream+1				; 2e byte in de buffer lezen
+	andi	ZL, 0b00000001
+
+;Wissel sub-adres output select ----
+push	R16
+mov		R16, ZL
+rcall	HexByte						; afbeelden op COM:
+rcall	UART_Space
+pop		R16
+;-----------------------------------
+
+
+
+
+	; C bit: plaatsen in temp3 bit0 		=> temp3==0 || temp3==1
+	lds		temp3, PacketStream+1			; 2e byte in de buffer lezen
+	andi	temp3, 0b00001000
+	; temp3 heeft nu de waarde 0 of 1 (naar gelang het C-bit 0 of 1)
+
+;C-bit afbeelden -------------------
+push	R16
+mov		R16, temp3
+rcall	HexByte						; afbeelden op COM:
+rcall	UART_Space
+pop		R16
+;-----------------------------------
+
+
+
+
+
+	; een masker opmaken in temp3 voor de te adresseren AVR-poort pin.. (wissel-pin0)
+	; en een 2e masker (temp4) voor de 2e draad naar de wissel op de AVR-pin ernaast (wissel-pin1)
+	ldi		R17, 0b00000001					; masker wissel-pin0
+_2:	cpi		R16, 0
+	breq	_1
+	lsl		R17
+	lsl		R17
+	dec		R16
+	rjmp	_2
+_1:	; R17 bevat nu het masker voor de AVR-poortpin (voor de wissel's 1e draad (wissel-pin0))
+	; het 2e masker is 1 AVR-pin verder te vinden..
+	mov		temp4, R17
+	lsl		temp4
+	; temp4 bevat nu het masker voor wissel-pin1
+
+
+
+	; lees de waarde die nu op de betreffende AVR-poort staat..
+	in		R16, PORTC ;PINC
+	; C-bit == 0 ? dan alle AVR-pins op 0
+	; C-bit == 1 ? dan de betreffende AVR-pins instellen (naar gelang wissel geaddresseerd)
+	sbrc	temp3, 3
+	rjmp	_3
+	; stroom eraf..
+	in		R16, PORTC
+	com		R17								; masker inverteren
+	and		R16, R17						; pin op 0
+	com		temp4							; masker inverteren
+	and		R16, temp4						; pin op 0
+	out		PORTC, R16
+	rjmp	_6
+_3:	; C-bit is gezet nu..de AVR-pins instellen
+	; lees de waarde die nu op de betreffende AVR-poort staat..
+	in		R16, PORTC ;PINC
+	; het 3e DDD bit voor selectie welke output
+	lds		ZL, PacketStream+1				; 2e byte in de buffer lezen
+	andi	ZL, 0b00000001
+	brne	_4
+	; wissel-pin0 instellen
+	com		R17								; masker inverteren
+	and		R16, R17						; pin op 0
+	com		R17								; masker inverteren
+	or		R16, R17
+	rjmp	_5
+_4:	; wissel-pin1 instellen
+	com		temp4							; masker inverteren
+	and		R16, temp4						; pin op 0
+	com		temp4							; masker inverteren
+	or		R16, temp4
+_5:	; waarde terugschrijven naar de AVR-poort
+	out		PORTC, R16
+
+
+_6:	rcall	UART_CrLf
+
+_0:	ResetStream
+
+.ENDMACRO
+
+.MACRO WaitForTimeOut
+_0:	cpi		TimeOut, 0
+	breq	_0
+	clr		TimeOut
+.ENDMACRO
+;--------------------------------------/
+
+
+
+
+
+;---------------------------------------
+;--- De LED poorten instellen
+;--------------------------------------\
+LED_Initialize:
+	sbi		LED_DDR, LED_Error			; output
+	LED_Off LED_Error					; Error LED uit
+	sbi		LED_DDR, LED_Bit			; output
+	LED_Off LED_Bit						; Bit LED uit
+	ret
+;---------------------------------------
+
+
+;---------------------------------------
+;--- De Capture pin instellen
+;--------------------------------------\
+Capture_Initialize:
+	cbi		CaptureDDR, CapturePin		; "input capture" pin
+	cbi		CapturePORT, CapturePin		; tri-state
+	ret
+;--------------------------------------/
+
+
+;---------------------------------------
+;--- De Bitstream (schrijf-adres)pointer
+;--------------------------------------\
+PacketStream_Initialize:
+	ResetStream
+	;clr	TimeOut						; de time-out vlag wissen
+	ret
+;--------------------------------------/
+
+;---------------------------------------
+;--- De AVR poorten initialiseren
+;--------------------------------------\
+WisselPoort_Initialize:
+	cbi		ADCSR, ADEN					; ADC disable
+	; poort op output
+	ser		R16
+	out		DDRC, R16
+	; leds uit
+	clr		R16
+	out		PORTC, R16
+	;sbi	PORTC, 0
+	ret
+;--------------------------------------/
+
+
+
+
+
+;---------------------------------------
+;--- De Timer1 initialiseren
+;--------------------------------------\
+Timer_Initialize:
+	; interrupts tegengaan
+	clr		temp
+	out		TIMSK, temp
+
+	; De Timer1 HW-PWM uitschakelen
+	clr		temp
+	out		TCCR1A, temp
+
+	;-- waarden voor TCCR1B
+	; ICNC1: Noise Canceler uitschakelen => input capture om elke sample/capture. (nvt nu)
+	; ICES1: Input Capture Interrupts op opgaande flank laten genereren. (nvt nu)
+	; CTC1:  Clear TCNT on compareA match uitschakelen
+	; CS12,CS11 & CS10: timer1clock-select instellen op CK/8 (0,1,0)
+	ldi		temp, (0<<ICNC1 | 0<<ICES1 | 0<<CTC1 | 0<<CS12 | 1<<CS11 | 0<<CS10)
+	out		TCCR1B, temp
+
+	; timer1 compareA match interrupt inschakelen
+	; timer1 compareB match interrupt uitschakelen
+	;ldi	temp, (1<<OCIE1A | 0<<OCIE1B)
+	ldi		temp, (0<<OCIE1A | 0<<OCIE1B)
+	out		TIMSK, temp
+	; Compare-A waarde instellen
+	;ldi	temp2, high(TimeOutValue)
+	;ldi	temp, low(TimeOutValue)
+	;out	OCR1AH, temp2
+	;out	OCR1AL, temp
+
+	; de counter op 0 instellen
+	ResetCounter
+	ret
+;--------------------------------------/
+
+
+
+;---------------------------------------
+;--- Timer1 CompareA match handler
+;--------------------------------------\
+Timer_Interrupt_CompareA:
+	push	temp
+	in		temp, SREG
+	push	temp
+;	push	XL
+;	push	XH
+;	push	YL
+;	push	YH
+;	push	ZL
+;	push	ZH
+
+	; Als deze handler wordt aangesproken houdt dat in:
+	; Het signaal is al 10ms op een 0-niveau, de bit & stream zijn ongeldig..
+
+	ser		TimeOut						; de time-out vlag zetten
+
+	; * eventueel uitvoer naar LED's en/of COM:-poort
+	.if Output_To_LED == 1
+		LED_On LED_Error				; Error LED aan (ongeldig)
+		LED_Off LED_Bit					; Bit LED uit
+	.endif
+	.if Output_To_COM == 1
+		ldi		temp, CHR_Timeout
+		rcall	UART_transmit
+	.endif
+	; * Herstel de bitsreampointer in het X-register
+	;ResetStream
+	; * de stream is klaar om te worden afgebeeld..
+	;   buiten deze handler dan.. ;)
+	;rcall	BitStream_Display
+
+;	pop		ZH
+;	pop		ZL
+;	pop		YH
+;	pop		YL
+;	pop		XH
+;	pop		XL
+	pop		temp
+	out		SREG, temp
+	pop		temp
+	reti
+;--------------------------------------/
+
+
+
+
+;---------------------------------------
+;--- Main Program
+;--------------------------------------\
+RESET:
+	;-- initialisatie
+	cli									; interrupts tegenhouden
+	initStackPointer					; initialiseer de stack pointer
+	rcall	UART_Initialize
+	;rcall	LED_Initialize				; de LED's
+	rcall	WisselPoort_Initialize		; poort A
+	rcall	Capture_Initialize			; de signaal input pin
+	rcall	PacketStream_Initialize		; de packetstream uitvoer buffer
+	rcall	Timer_Initialize			; de timer
+
+	rcall	UART_transmit_InitString
+	sei									; interrupts weer toelaten
+	;--
+main_loop:
+	; in periode A.. of op een tijdstip tussen 2 packets
+	; eerst wachten tot het een tijd (>18ms) stil is geweest op de DCC-bus..
+;	WaitForTimeOut
+;	clr		TimeOut
+	; 
+	clr		PreambleCount				; de Preamble detectie teller
+	ldi		Step, _Preamble
+
+CheckStream:
+	WaitFor0
+
+;	; debug
+;	ldi		temp, CHR_0
+;w0:sbis	USR, UDRE
+;	rjmp	w0
+;	out		UDR, temp
+
+
+	; begin Periode B
+	ReadCounter YL, YH					; de timercounter uitlezen in register Y
+	ResetCounter						; de counter op 0 instellen
+	
+;	cpi		TimeOut, 0					; timed-out?
+;	breq	Process_
+;	rjmp	ProcessStream
+;Process_:
+
+	;TestPeriode YL, YH					; controleer ontvangen halve bit (periode A)
+	WaitFor1
+
+;	; debug
+;	ldi		temp, CHR_1
+;w1:sbis	USR, UDRE
+;	rjmp	w1
+;	out		UDR, temp
+
+	; begin periode A
+	ReadCounter ZL, ZH					; de timercounter uitlezen in register Z
+	ResetCounter						; de counter op 0 instellen
+	TestPeriode ZL, ZH					; controleer ontvangen halve bit (periode B)
+	;
+	rjmp 	CheckStream
+;--------------------------------------/
+
+
+
+
+
+

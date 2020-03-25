@@ -1,0 +1,3 @@
+dir: /opt/DDL/bin
+deamon: ./erddcd.rc
+ctrl-alt-f2 inloggen client..

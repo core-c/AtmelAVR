@@ -1,0 +1,835 @@
+
+AVRASM ver. 1.56  E:\Program Files\AVR Studio\AvrStudio4\HCore\UART_HalfDuplex\UART_HalfDuplex\UART_HalfDuplex.asm Wed Mar 26 16:40:37 2003
+
+
+E:\Program Files\AVR Studio\AvrStudio4\HCore\UART_HalfDuplex\UART_HalfDuplex\UART_HalfDuplex.asm(403): warning: A .db segment with an odd number of bytes is detected. A zero byte is added.
+E:\Program Files\AVR Studio\AvrStudio4\HCore\UART_HalfDuplex\UART_HalfDuplex\UART_HalfDuplex.asm(404): warning: A .db segment with an odd number of bytes is detected. A zero byte is added.
+E:\Program Files\AVR Studio\AvrStudio4\HCore\UART_HalfDuplex\UART_HalfDuplex\UART_HalfDuplex.asm(405): warning: A .db segment with an odd number of bytes is detected. A zero byte is added.
+E:\Program Files\AVR Studio\AvrStudio4\HCore\UART_HalfDuplex\UART_HalfDuplex\UART_HalfDuplex.asm(406): warning: A .db segment with an odd number of bytes is detected. A zero byte is added.
+E:\Program Files\AVR Studio\AvrStudio4\HCore\UART_HalfDuplex\UART_HalfDuplex\UART_HalfDuplex.asm(407): warning: A .db segment with an odd number of bytes is detected. A zero byte is added.
+E:\Program Files\AVR Studio\AvrStudio4\HCore\UART_HalfDuplex\UART_HalfDuplex\UART_HalfDuplex.asm(408): warning: A .db segment with an odd number of bytes is detected. A zero byte is added.
+E:\Program Files\AVR Studio\AvrStudio4\HCore\UART_HalfDuplex\UART_HalfDuplex\UART_HalfDuplex.asm(409): warning: A .db segment with an odd number of bytes is detected. A zero byte is added.
+E:\Program Files\AVR Studio\AvrStudio4\HCore\UART_HalfDuplex\UART_HalfDuplex\UART_HalfDuplex.asm(410): warning: A .db segment with an odd number of bytes is detected. A zero byte is added.
+E:\Program Files\AVR Studio\AvrStudio4\HCore\UART_HalfDuplex\UART_HalfDuplex\UART_HalfDuplex.asm(411): warning: A .db segment with an odd number of bytes is detected. A zero byte is added.
+E:\Program Files\AVR Studio\AvrStudio4\HCore\UART_HalfDuplex\UART_HalfDuplex\UART_HalfDuplex.asm(412): warning: A .db segment with an odd number of bytes is detected. A zero byte is added.
+E:\Program Files\AVR Studio\AvrStudio4\HCore\UART_HalfDuplex\UART_HalfDuplex\UART_HalfDuplex.asm(413): warning: A .db segment with an odd number of bytes is detected. A zero byte is added.
+E:\Program Files\AVR Studio\AvrStudio4\HCore\UART_HalfDuplex\UART_HalfDuplex\UART_HalfDuplex.asm(414): warning: A .db segment with an odd number of bytes is detected. A zero byte is added.
+         
+         ;**** A P P L I C A T I O N   N O T E   A V R 3 0 4 ************************
+         ;*
+         ;* Title:		Half Duplex Interrupt Driven Software UART 
+         ;* Version:		1.0
+         ;* Last updated:	nov 5 2002, by ØE
+         ;* Target:		AT90Sxxxx (All AVR Devices)
+         ;*
+         ;* Support E-mail:	avr@atmel.com
+         ;*
+         ;* Code Size		:72 words
+         ;* Low Register Usage	:2
+         ;* High Register Usage	:5
+         ;* Interrupt Usage	:External Interrupt,
+         ;*			 Timer/Counter0 overflow interrupt
+         ;*
+         ;* DESCRIPTION
+         ;*
+         ;* This application note describes how to make a half duplex software UART
+         ;* on any AVR device with the 8-bit Timer/Counter0 and External Interrupt.
+         ;* As a lot of control applications communicate in one direction at a time
+         ;* only, a half duplex UART will limit the usage of MCU resources.
+         ;*
+         ;* The constants N and R determine the data rate. R selects clock frequency
+         ;* as described in the T/C Prescaler in the AVR databook. If the T/C pre-
+         ;* scaling factor is denoted C, the following expression yields the data rate:
+         ;*
+         ;*		 XTAL
+         ;*	 BAUD = ------		min. N*C = 17
+         ;*		 N*C		max. N   = 170
+         ;*
+         ;* Absolute minimum value for N*C is 17 (which causes the interrupt flag to be 
+         ;* set again before the interrupt is finished). Absolute maximum is 170.
+         ;* (Caused by the 1.5bit-lenght that is necessary to receive bits correctly.)
+         ;*
+         ;* The UART uses PD2 as receive pin because it utilizes the external interrupt.
+         ;* The transmit-pin is PD4 in this example, but it can be any other pins.
+         ;*
+         ;* Since the UART is half duplex, it can either send or recieve data. It can't
+         ;* do both simoutaneausly. When idle it will automatically recieve incoming
+         ;* data, but if it is transmitting data while incoming data arrives, it will
+         ;* ignore it. Also, if u_transmit is called without waiting for the 'READY' bit
+         ;* in the 'u_status' register to become cleared, it will abort any pending 
+         ;* reception or transmittal.
+         ;*
+         ;*
+         ;* *** Initialization
+         ;*
+         ;*  1. Call uart_init
+         ;*  2. Enable global interrupts (with 'sei')
+         ;*
+         ;* *** Receive
+         ;*
+         ;*  1. Wait until RDR in 'u_status' becomes set
+         ;*  2. Read 'u_buffer'
+         ;*
+         ;* *** Transmit
+         ;*
+         ;* (0. Initialize the UART by executing uart_init and sei)
+         ;*  1. Wait until READY in 'u_status' becomes clear
+         ;*  2. Set 'u_buffer'
+         ;*  3. Call 'u_transmit'
+         ;*
+         ;**************************************************************************
+         
+          .include "8535def.inc"
+         ;***************************************************************************
+         ;* A P P L I C A T I O N   N O T E   F O R   T H E   A V R   F A M I L Y
+         ;* 
+         ;* Number				:AVR000
+         ;* File Name			:"8535def.inc"
+         ;* Title				:Register/Bit Definitions for the AT90S8535
+         ;* Date                 :99.01.28
+         ;* Version              :1.30
+         ;* Support telephone	:+47 72 88 43 88 (ATMEL Norway)
+         ;* Support fax			:+47 72 88 43 99 (ATMEL Norway)
+         ;* Support E-mail		:avr@atmel.com
+         ;* Target MCU			:AT90S8535
+         ;*
+         ;* DESCRIPTION
+         ;* When including this file in the assembly program file, all I/O register	
+         ;* names and I/O register bit names appearing in the data book can be used.
+         ;* In addition, the six registers forming the three data pointers X, Y and
+         ;* Z have been assigned names XL - ZH. Highest RAM address for Internal 
+         ;* SRAM is also defined 
+         ;*
+         ;* The Register names are represented by their hexadecimal address.
+         ;* 
+         ;* The Register Bit names are represented by their bit number (0-7).
+         ;* 
+         ;* Please observe the difference in using the bit names with instructions
+         ;* such as "sbr"/"cbr" (set/clear bit in register) and "sbrs"/"sbrc" 
+         ;* (skip if bit in register set/cleared). The following example illustrates
+         ;* this:
+         ;* 
+         ;* in	r16,PORTB				;read PORTB latch
+         ;* sbr	r16,(1<<PB6)+(1<<PB5)	;set PB6 and PB5 (use masks, not bit#)
+         ;* out  PORTB,r16				;output to PORTB
+         ;*
+         ;* in	r16,TIFR				;read the Timer Interrupt Flag Register
+         ;* sbrc	r16,TOV0				;test the overflow flag (use bit#)
+         ;* rjmp	TOV0_is_set				;jump if set
+         ;* ...							;otherwise do something else
+         ;***************************************************************************
+         
+         ;***** Specify Device
+          .device AT90S8535
+         
+         ;***** I/O Register Definitions
+          .equ	SREG	=$3f
+          .equ	SPH		=$3e
+          .equ	SPL		=$3d
+          .equ	GIMSK	=$3b
+          .equ	GIFR	=$3a
+          .equ	TIMSK	=$39
+          .equ	TIFR	=$38
+          .equ	MCUCR	=$35
+          .equ	MCUSR	=$34
+          .equ	TCCR0	=$33
+          .equ	TCNT0	=$32
+          .equ	TCCR1A	=$2f
+          .equ	TCCR1B	=$2e
+          .equ	TCNT1H	=$2d
+          .equ	TCNT1L	=$2c
+          .equ	OCR1AH	=$2b
+          .equ	OCR1AL	=$2a
+          .equ	OCR1BH	=$29
+          .equ	OCR1BL	=$28
+          .equ	ICR1H	=$27
+          .equ	ICR1L	=$26
+          .equ	TCCR2	=$25
+          .equ	TCNT2	=$24
+          .equ	OCR2	=$23
+          .equ	ASSR	=$22
+          .equ	WDTCR	=$21
+          .equ	EEARH	=$1f
+          .equ	EEARL	=$1e
+          .equ	EEDR	=$1d
+          .equ	EECR	=$1c
+          .equ	PORTA	=$1b
+          .equ	DDRA	=$1a
+          .equ	PINA	=$19
+          .equ	PORTB	=$18
+          .equ	DDRB	=$17
+          .equ	PINB	=$16
+          .equ	PORTC	=$15
+          .equ	DDRC	=$14
+          .equ	PINC	=$13
+          .equ	PORTD	=$12
+          .equ	DDRD	=$11
+          .equ	PIND	=$10
+          .equ	SPDR	=$0f
+          .equ	SPSR	=$0e
+          .equ	SPCR	=$0d
+          .equ	UDR		=$0c
+          .equ	USR		=$0b
+          .equ	UCR		=$0a
+          .equ	UBRR	=$09
+          .equ	ACSR	=$08
+          .equ    ADMUX   =$07
+          .equ    ADCSR   =$06
+          .equ    ADCH    =$05
+          .equ    ADCL    =$04
+         
+         
+         ;***** Bit Definitions
+         ;MCUSR
+          .equ	EXTRF	=1
+          .equ	PORF	=0
+         
+         ;GIMSK
+          .equ	INT1	=7
+          .equ	INT0	=6
+         
+         ;GIFR
+          .equ	INTF1	=7
+          .equ	INTF0	=6
+         
+         ;TIMSK
+          .equ	OCIE2	=7
+          .equ	TOIE2	=6
+          .equ	TICIE1	=5
+          .equ	OCIE1A	=4
+          .equ	OCIE1B	=3
+          .equ	TOIE1	=2
+          .equ	TOIE0	=0
+         
+         ;TIFR
+          .equ	OCF2	=7
+          .equ	TOV2	=6
+          .equ	ICF1	=5
+          .equ	OCF1A	=4
+          .equ	OCF1B	=3
+          .equ	TOV1	=2
+          .equ	TOV0	=0
+         
+         ;MCUCR
+          .equ	SE		=6
+          .equ	SM1		=5
+          .equ	SM0		=4
+          .equ	ISC11	=3
+          .equ	ISC10	=2
+          .equ	ISC01	=1
+          .equ	ISC00	=0
+         
+         ;TCCR0
+          .equ	CS02	=2
+          .equ	CS01	=1
+          .equ	CS00	=0
+         
+         ;TCCR1A
+          .equ	COM1A1	=7
+          .equ	COM1A0	=6
+          .equ	COM1B1	=5
+          .equ	COM1B0	=4
+          .equ	PWM11	=1
+          .equ	PWM10	=0
+         
+         ;TCCR1B
+          .equ	ICNC1	=7
+          .equ	ICES1	=6
+          .equ	CTC1	=3
+          .equ	CS12	=2
+          .equ	CS11	=1
+          .equ	CS10	=0
+         
+         ;TCCR2
+          .equ	PWM2	=6
+          .equ	COM21	=5
+          .equ	COM20	=4
+          .equ	CTC2	=3
+          .equ	CS22	=2
+          .equ	CS21	=1
+          .equ	CS20	=0
+         
+         ;ASSR
+          .equ	AS2		=3
+          .equ	TCN2UB	=2
+          .equ	OCR2UB	=1
+          .equ	TCR2UB	=0
+         
+         ;WDTCR
+          .equ	WDTOE	=4
+          .equ	WDE		=3
+          .equ	WDP2	=2
+          .equ	WDP1	=1
+          .equ	WDP0	=0
+         
+         ;EECR
+          .equ	EERIE	=3
+          .equ	EEMWE	=2
+          .equ	EEWE	=1
+          .equ	EERE	=0
+         
+         ;PORTA
+          .equ	PA7		=7
+          .equ	PA6		=6
+          .equ	PA5		=5
+          .equ	PA4		=4
+          .equ	PA3		=3
+          .equ	PA2		=2
+          .equ	PA1		=1
+          .equ	PA0		=0
+         
+         ;DDRA
+          .equ	DDA7	=7
+          .equ	DDA6	=6
+          .equ	DDA5	=5
+          .equ	DDA4	=4
+          .equ	DDA3	=3
+          .equ	DDA2	=2
+          .equ	DDA1	=1
+          .equ	DDA0	=0
+         
+         ;PINA
+          .equ	PINA7	=7
+          .equ	PINA6	=6
+          .equ	PINA5	=5
+          .equ	PINA4	=4
+          .equ	PINA3	=3
+          .equ	PINA2	=2
+          .equ	PINA1	=1
+          .equ	PINA0	=0
+         
+         ;PORTB
+          .equ	PB7		=7
+          .equ	PB6		=6
+          .equ	PB5		=5
+          .equ	PB4		=4
+          .equ	PB3		=3
+          .equ	PB2		=2
+          .equ	PB1		=1
+          .equ	PB0		=0
+         
+         ;DDRB
+          .equ	DDB7	=7
+          .equ	DDB6	=6
+          .equ	DDB5	=5
+          .equ	DDB4	=4
+          .equ	DDB3	=3
+          .equ	DDB2	=2
+          .equ	DDB1	=1
+          .equ	DDB0	=0
+         
+         ;PINB
+          .equ	PINB7	=7
+          .equ	PINB6	=6
+          .equ	PINB5	=5
+          .equ	PINB4	=4
+          .equ	PINB3	=3
+          .equ	PINB2	=2
+          .equ	PINB1	=1
+          .equ	PINB0	=0
+         
+         ;PORTC
+          .equ	PC7		=7
+          .equ	PC6		=6
+          .equ	PC5		=5
+          .equ	PC4		=4
+          .equ	PC3		=3
+          .equ	PC2		=2
+          .equ	PC1		=1
+          .equ	PC0		=0
+         
+         ;DDRC
+          .equ	DDC7	=7
+          .equ	DDC6	=6
+          .equ	DDC5	=5
+          .equ	DDC4	=4
+          .equ	DDC3	=3
+          .equ	DDC2	=2
+          .equ	DDC1	=1
+          .equ	DDC0	=0
+         
+         ;PINC
+          .equ	PINC7	=7
+          .equ	PINC6	=6
+          .equ	PINC5	=5
+          .equ	PINC4	=4
+          .equ	PINC3	=3
+          .equ	PINC2	=2
+          .equ	PINC1	=1
+          .equ	PINC0	=0
+         
+         ;PORTD
+          .equ	PD7		=7
+          .equ	PD6		=6
+          .equ	PD5		=5
+          .equ	PD4		=4
+          .equ	PD3		=3
+          .equ	PD2		=2
+          .equ	PD1		=1
+          .equ	PD0		=0
+         
+         ;DDRD
+          .equ	DDD7	=7
+          .equ	DDD6	=6
+          .equ	DDD5	=5
+          .equ	DDD4	=4
+          .equ	DDD3	=3
+          .equ	DDD2	=2
+          .equ	DDD1	=1
+          .equ	DDD0	=0
+         
+         ;PIND
+          .equ	PIND7	=7
+          .equ	PIND6	=6
+          .equ	PIND5	=5
+          .equ	PIND4	=4
+          .equ	PIND3	=3
+          .equ	PIND2	=2
+          .equ	PIND1	=1
+          .equ	PIND0	=0
+         
+         ;SPCR
+          .equ	SPIE	=7
+          .equ	SPE		=6
+          .equ	DORD	=5
+          .equ	MSTR	=4
+          .equ	CPOL	=3
+          .equ	CPHA	=2
+          .equ	SPR1	=1
+          .equ	SPR0	=0
+         
+         ;SPSR
+          .equ	SPIF	=7
+          .equ	WCOL	=6
+         
+         ;USR
+          .equ	RXC		=7
+          .equ	TXC		=6
+          .equ	UDRE	=5
+          .equ	FE		=4
+          .equ	OR		=3
+         
+         ;RXCIE
+          .equ	RXCIE	=7
+          .equ	TXCIE	=6
+          .equ	UDRIE	=5
+          .equ	RXEN	=4
+          .equ	TXEN	=3
+          .equ	CHR9	=2
+          .equ	RXB8	=1
+          .equ	TXB8	=0
+         
+         ;ACSR
+          .equ	ACD		=7
+          .equ	ACO		=5
+          .equ	ACI		=4
+          .equ	ACIE	=3
+          .equ	ACIC	=2
+          .equ	ACIS1	=1
+          .equ	ACIS0	=0
+         
+         ;ADMUX
+          .equ	MUX2	=2
+          .equ	MUX1	=1
+          .equ	MUX0	=0
+         
+         ;ADCSR
+          .equ	ADEN	=7
+          .equ	ADSC	=6
+          .equ	ADFR	=5
+          .equ	ADIF	=4
+          .equ	ADIE	=3
+          .equ	ADPS2	=2
+          .equ	ADPS1	=1
+          .equ	ADPS0	=0
+         
+          .def	XL		=r26
+          .def	XH		=r27
+          .def	YL		=r28
+          .def	YH		=r29
+          .def	ZL		=r30
+          .def	ZH		=r31
+         
+          .equ 	RAMEND  =$25F	;Last On-Chip SRAM location
+          .equ	XRAMEND =$25F
+          .equ	E2END	=$1FF
+          .equ	FLASHEND=$FFF
+         
+          .equ	INT0addr=$001	;External Interrupt0 Vector Address
+          .equ	INT1addr=$002	;External Interrupt1 Vector Address
+          .equ	OC2addr =$003	;Timer2 compare match Vector Address
+          .equ	OVF2addr=$004	;Timer2 overflow Vector Address
+          .equ	ICP1addr=$005	;Timer1 Input Capture Vector Address
+          .equ	OC1Aaddr=$006	;Timer1 Output Compare A Interrupt Vector Address
+          .equ	OC1Baddr=$007	;Timer1 Output Compare B Interrupt Vector Address
+          .equ	OVF1addr=$008	;Overflow1 Interrupt Vector Address
+          .equ	OVF0addr=$009	;Overflow0 Interrupt Vector Address
+          .equ	SPIaddr =$00A	;SPI Interrupt Vector Address
+          .equ	URXCaddr=$00B	;UART Receive Complete Interrupt Vector Address
+          .equ	UDREaddr=$00C	;UART Data Register Empty Interrupt Vector Address
+          .equ	UTXCaddr=$00D	;UART Transmit Complete Interrupt Vector Address
+          .equ	ADCCaddr=$00E	;ADC Conversion Complete Interrupt Vector Address
+          .equ	ERDYaddr=$00F	;EEPROM Write Complete Interrupt Vector Address
+          .equ	ACIaddr =$010	;Analog Comparator Interrupt Vector Address
+         
+         ;***** BAUD-rate settings
+         
+         				;BAUD-RATES @1MHz XTAL AND R=1
+         ;.equ	N=104			; 9600
+         ;.equ	N=52			;19200 
+         ;.equ	N=26			;38400
+          .equ	C=1			;Divisor
+          .equ	R=1			;R=1 when C=1
+         
+         
+         				;BAUD-RATES @922kHz XTAL AND R=1
+          .equ	N=96			; 9600
+         ;.equ	C=1			;Divisor
+         ;.equ	R=1			;R=1 when C=1
+         
+         
+         ;***** UART Global Registers
+         
+          .def	u_buffer	=r14	;Serial buffer
+          .def	u_sr		=r15	;Status-register storage
+          .def	u_tmp		=r16	;Scratchregister
+          .def	u_bit_cnt	=r17	;Bit counter
+          .def	u_status	=r18	;Status buffer
+          .def	u_reload	=r19	;Reload-register (internal - do not use)
+          .def	u_transmit	=r20	;Data to transmit
+         
+         
+         ;***** Bit positions in the Status-register
+         
+          .equ	RDR=0			;Receive data ready bit
+          .equ	TD=6			;Transmitting data (internal - read-only)
+          .equ	BUSY=7			;Busy-flag (internal - read-only)
+         
+         
+         ;**************************************************************************
+         ;*
+         ;*	PROGRAM START - EXECUTION STARTS HERE
+         ;*
+         ;**************************************************************************
+          	.cseg
+         
+          	.org $0000
+000000 c058      	rjmp	start			;Reset handler
+         
+          	.org INT0addr
+000001 c00f      	rjmp	ext_int0		;External interrupt handler
+         
+          	.org OVF0addr
+000009 c013      	rjmp	tim0_ovf		;Timer0 overflow handler
+         
+          	.org ACIaddr
+000010 9518      	reti				;Analog comparator handler (Not Used)
+         
+         
+         
+         ;**************************************************************************
+         ;*
+         ;* EXT_INT0 - External Interrupt Routine 0
+         ;*
+         ;*
+         ;* DESCRIPTION
+         ;* This routine is executed when a negative edge on the incoming serial
+         ;* signal is detected. It disables further external interrupts and enables
+         ;* timer interrupts (bit-timer) because the UART must now receive the
+         ;* incoming data. 
+         ;*
+         ;* This routine sets bits in the GIMSK, TIFR and TIMSK registers. In this
+         ;* code when the bits are set, it overwrites all other bits. This is done
+         ;* because of the lack of available cycles when it operates at low clock
+         ;* rate and high baudrates.
+         ;*
+         ;*
+         ;* Total number of words	: 12
+         ;* Total number of cycles	: 15 (incl. reti)
+         ;* Low register usage		: 1 (u_sr)
+         ;* High register usage		: 4 (u_bit_cnt,u_tmp,u_status,u_reload)
+         ;*
+         ;**************************************************************************
+          ext_int0:
+000011 b6ff      	in	u_sr,SREG		;Store Status Register
+         
+000012 e820      	ldi	u_status,1<<BUSY	;Set busy-flag (clear all others)
+         
+000013 e80d      	ldi	u_tmp,(256-(N+N/2)+(29/C));Set timer reload-value (to 1.5
+000014 bf02      	out	TCNT0,u_tmp		;  bit len). 29 = time delay that
+         					;  have already been used in this
+         					;  interrupt plus the time
+         					;  that will be used by the time
+         					;  delay between timer interrupt request
+         					;  and the actual sampling of the first
+         					;  data bit.
+         
+000015 e001      	ldi	u_tmp,1<<TOIE0		;Set bit 1 in u_tmp
+000016 bf08      	out	TIFR,u_tmp		;   to clear T/C0 overflow flag
+000017 bf09      	out	TIMSK,u_tmp		;   and enable T/C0 overflow interrupt
+         
+000018 2711      	clr	u_bit_cnt		;Clear bit counter
+000019 bf1b      	out	GIMSK,u_bit_cnt		;Disable external interrupt
+         
+00001a ea38      	ldi	u_reload,(256-N+(8/C))	;Set reload-value (constant).
+         
+00001b beff      	out	SREG,u_sr		;Restore SREG
+00001c 9518      	reti
+         
+         
+         ;**************************************************************************
+         ;*
+         ;* TIM0_OVF - Timer/Counter 0 Overflow Interrupt
+         ;*
+         ;*
+         ;* DESCRIPTION
+         ;* This routine coordinates the transmition and reception of bits. This 
+         ;* routine is automatically executed at a rate equal to the baud-rate. When
+         ;* transmitting, this routine shifts the bits and sends it. When receiving,
+         ;* it samples the bit and shifts it into the buffer.
+         ;*
+         ;* The serial routines uses a status register (u_status): READ-ONLY.
+         ;*		BUSY	This bit indicates whenever the UART is busy
+         ;*		TD	Transmit Data. Set when the UART is transmitting
+         ;*		RDR	Receive Data Ready. Set when new data has arrived
+         ;*			and it is ready for reading.
+         ;*
+         ;* When the RDR flag is set, the (new) data can be read from u_buffer.
+         ;*
+         ;* This routine also sets bits in TIMSK and TIMSK. See ext_int0 description
+         ;*
+         ;* 
+         ;* Total number of words	: 35
+         ;* Total number of cycles	: min. 18, max. 28 - depending on if it is
+         ;*				  receiving or transmitting, what bit is
+         ;*				  pending, etc.
+         ;* Low register usage		: 2 (u_sr,u_buffer)
+         ;* High register usage		: 4 (u_bit_cnt,u_tmp,u_status,u_reload)
+         ;* 
+         ;**************************************************************************
+          tim0_ovf:
+00001d b6ff      	in	u_sr,SREG		;Store statusregister
+         
+00001e bf32      	out	TCNT0,u_reload		;Reload timer
+         
+00001f 9513      	inc	u_bit_cnt		;Increment bit_counter
+000020 ff26      	sbrs	u_status,TD		;if transmit-bit set
+000021 c017      	rjmp	tim0_receive		;    goto receive
+         
+000022 fd13      	sbrc	u_bit_cnt,3		;if bit 3 in u_bit_cnt (>7) is set
+000023 c009      	rjmp	tim0_stopb		;    jump to stop-bit-part
+         
+000024 fce0      	sbrc	u_buffer,0		;if LSB in buffer is 1
+000025 9a94      	sbi	PORTD,PD4		;    Set transmit to 1
+000026 fee0      	sbrs	u_buffer,0		;if LSB in buffer is 0
+000027 9894      	cbi	PORTD,PD4		;    Set transmit to 0
+000028 94e6      	lsr	u_buffer		;Shift buffer right
+         
+000029 e006      	ldi u_tmp,INTF0 
+00002a bf0a      	out GIFR,u_tmp ; clear pending ext. int. 
+         	
+00002b beff      	out	SREG,u_sr		;Restore SREG
+00002c 9518      	reti
+         
+          tim0_stopb:
+00002d 9a94      	sbi	PORTD,PD4		;Generate stop-bit
+         
+00002e ff10      	sbrs	u_bit_cnt,0		;if u_bit_cnt==8 (stop-bit)
+00002f c007      	rjmp	tim0_ret		;      jump to exit
+         
+          tim0_complete:
+000030 e400      	ldi u_tmp,1<<INTF0 
+000031 bf0a      	out GIFR,u_tmp ; clear pending ext. int. 
+000032 e400      	ldi	u_tmp,1<<INT0		;(u_bit_cnt==9):
+000033 bf0b      	out	GIMSK,u_tmp		;Enable external interrupt
+000034 2700      	clr	u_tmp 
+000035 bf09      	out	TIMSK,u_tmp		    ;Disable timer interrupt
+000036 732f      	cbr	u_status,(1<<BUSY)|(1<<TD)  ;Clear busy-flag and transmit-flag
+         
+          tim0_ret:
+000037 beff      	out	SREG,u_sr		;Restore status register
+000038 9518      	reti
+         
+          tim0_receive:
+000039 9408      	sec				;Set carry
+00003a 9b82      	sbis	PIND,2			;if PD2=LOW         <=== SAMPLE HERE
+00003b 9488      	clc				;    clear carry
+00003c 94e7      	ror	u_buffer		;Shift carry into data
+00003d b70f      	in	u_tmp,SREG		;Store SREG
+         
+00003e 3019      	cpi	u_bit_cnt,9		;if u_bit_cnt!=9 (must sample stop-bit)
+00003f f7b9      	brne	tim0_ret		;   exit interrupt
+         
+000040 bf0f      	out	SREG,u_tmp		;Get old SREG
+000041 1cee      	rol	u_buffer		;Rotate back data (to get rid of the stop-bit)
+         
+000042 6021      	sbr	u_status,1<<RDR		;Clear busy-flag
+000043 cfec      	rjmp	tim0_complete
+         
+         
+         
+         ;**************************************************************************
+         ;*
+         ;* uart_init - Subroutine for UART initialization
+         ;*
+         ;*
+         ;* DESCRIPTION
+         ;* This routine initializes the UART. It sets the timer and enables the
+         ;* external interrupt (receiving). To enable the UART the global interrupt
+         ;* flag must be set (with SEI).
+         ;*
+         ;*
+         ;* Total number of words	: 8
+         ;* Total number of cycles	: 11 (including the RET instructions)
+         ;* Low register usage		: None
+         ;* High register usage		: 2 (u_tmp,u_status)
+         ;* 
+         ;**************************************************************************
+          uart_init:	
+000044 e001      	ldi	u_tmp,R
+000045 bf03      	out	TCCR0,u_tmp		;Start timer and set clock source
+000046 e400      	ldi	u_tmp,1<<INT0
+000047 bf0b      	out	GIMSK,u_tmp		;Enable external interrupt 0
+000048 e002      	ldi	u_tmp,1<<ISC01
+000049 bf05      	out	MCUCR,u_tmp		;On falling edges
+00004a 2722      	clr	u_status		;Erase status-byte
+00004b 9508      	ret
+         
+         
+         
+         ;**************************************************************************
+         ;*
+         ;* uart_transmit - Subroutine for UART transmittal
+         ;*
+         ;*
+         ;* DESCRIPTION
+         ;* This routine initialize the UART to transmit data. The data to be sent
+         ;* must be located in u_transmit. 
+         ;*
+         ;* Warning: This routine cancels all other transmittions or receptions.
+         ;* So be careful. If a byte is being received and the timer interrupt is
+         ;* currently running, the tranmittion may be corrupted. By checking the
+         ;* READY-bit and/or TD-bit in the u_status register for safe transmissions.
+         ;*
+         ;* This routine also sets bits in TIMSK and TIMSK. See ext_int0 description
+         ;*
+         ;*
+         ;* Total number of words	: 13
+         ;* Total number of cycles	: 17 (including RET)
+         ;* Low register usage		: 1 (u_buffer)
+         ;* High register usage		: 4 (u_bit_cnt,u_tmp,u_transmit,u_reload)
+         ;* 
+         ;**************************************************************************
+          uart_transmit:
+00004c ec20      	ldi	u_status,(1<<BUSY)|(1<<TD)   ;Set only busy- and transmit flag
+         
+00004d 2700      	clr	u_tmp
+00004e bf0b      	out	GIMSK,u_tmp		;Disable external interrupt
+         
+00004f ef1f      	ser	u_bit_cnt		;Erase bit-counter (set all bits)
+000050 2ee4      	mov	u_buffer,u_transmit	;Copy transmit-data to buffer
+         
+000051 e001      	ldi	u_tmp,1<<TOIE0		;Set bit 1 in u_tmp
+000052 bf08      	out	TIFR,u_tmp		;  to clear T/C0 overflow flag
+000053 bf09      	out	TIMSK,u_tmp		;  and enable T/C0 overflow interrupt
+         	
+000054 ea38      	ldi	u_reload,(256-N+(8/C))	;Set reload-value
+000055 ea0e      	ldi	u_tmp,(256-N+(14/C))	;Set timer delay to first bit
+000056 bf02      	out	TCNT0,u_tmp		;Set timer reload-value (1 bit)
+         
+000057 9894      	cbi	PORTD,PD4		;Clear output (start-bit)
+000058 9508      	ret
+         
+         
+         
+         ;**************************************************************************
+         ;*
+         ;*	Test/Example Program
+         ;*
+         ;* This example program can be used for evaluation of the UART agains a PC
+         ;* running a terminal emulator. If a key is pressed on the PC keyboard, the
+         ;* message 'You typed <characher>' is sent back. The character is also
+         ;* presented on port B.
+         ;*
+         ;**************************************************************************
+         
+          .def	tmp=r21				;Temp. register
+          .def	buffer=r22			;Recieved byte
+          .def	adr=r23				;EEPROM Address
+         
+000059 ef5f      start:	ser	tmp			;Initialize
+00005a e55f      	ldi tmp, low(RAMEND)
+00005b bf5d      	out SPL, tmp
+00005c bb52      	out	PORTD,tmp		;Set port D as input with pullups
+00005d 9a8c      	sbi	DDRD,DDD4		;    except PD4 -> output with 1's
+00005e bb57      	out	DDRB,tmp		;Set port B as output with 1's (LED-off)
+00005f bb58      	out	PORTB,tmp
+         
+000060 dfe3      	rcall	uart_init		;Init UART
+000061 9478      	sei				;Enable interrupts
+         
+000062 ff20      idle:	sbrs	u_status,RDR		;Wait for Character
+000063 cffe      	rjmp	idle
+000064 2d6e      	mov	buffer,u_buffer		;Get recieved character
+000065 bae8      	out	PORTB,u_buffer		;Output the byte on port B
+000066 e070      	ldi	adr,example_data	;Set/Restore pointer to EEPROM data
+         
+000067 bb7e      loop:	out	EEARL,adr		;Set the EEPROM's address
+000068 9ae0      	sbi	EECR,EERE		;Send the Read strobe
+000069 b34d      	in	u_transmit,EEDR		;Put the data in the transmit register
+00006a dfe1      	rcall	uart_transmit		;And transmit the data
+         
+00006b fd26      wait:	sbrc	u_status,TD		;Wait until data is sent
+00006c cffe      	rjmp	wait
+         
+00006d 9573      	inc	adr			;Increase pointer
+00006e 307c      	cpi	adr,example_data+12	;Reached byte 12? (End?)
+00006f f391      	breq	idle			;    Yes, wait for new char.
+         
+000070 307a      	cpi	adr,example_data+10	;Reached byte 10?
+000071 f7a9      	brne	loop			;    No, jump back
+         
+000072 2f46      	mov	u_transmit,buffer	;Put data in transmit register
+000073 dfd8      	rcall	uart_transmit		;And transmit it
+         
+000074 fd26      wait2:	sbrc	u_status,TD		;Wait until data is sent
+000075 cffe      	rjmp	wait2
+         
+000076 cff0      	rjmp	loop			;Continue sendig chars
+         
+         
+         ;**************************************************************************
+         ;*
+         ;*	Test/Example program data.
+         ;*
+         ;* This is the data that will be sent back when a character is recieved.
+         ;*
+         ;**************************************************************************
+          	.eseg
+          example_data:
+          	.db	89	;'Y'
+000000 59
+          	.db	111	;'o'
+000001 6f
+          	.db	117	;'u'
+000002 75
+          	.db	32	;' '
+000003 20
+          	.db	116	;'t'
+000004 74
+          	.db	121	;'y'
+000005 79
+          	.db	112	;'p'
+000006 70
+          	.db	101	;'e'
+000007 65
+          	.db	100	;'d'
+000008 64
+          	.db	32	;' '
+000009 20
+          	.db	13	;<CR>
+00000a 0d
+          	.db	10	;<LF>
+00000b 0a
+
+Assembly complete with no errors.

@@ -1,0 +1,347 @@
+unit Unit2;
+interface
+uses
+  OpenGL12, GLUT, Math;
+
+{$J+}
+const
+    // De perspectief parameters
+    nearDistance: GLFloat = 0.1;    //near plane
+    viewDistance: GLFloat = 5.0;  // far plane
+    FOV: GLFloat = 60.0;  //hoek van FOV graden in Y-richting (hoogte) voor camera (blz 126)
+    aspectRatio: GLFloat = 300/300; //verhouding Width & Height van het scherm
+    // De camera-parameters
+    camDistance: GLFloat = 2.0;
+    camHeight: GLFloat = 0.2;
+
+const
+    // Materialen
+    Material0_Diffuse  : array[0..3] of GLfloat = (0.5, 0.0, 0.0, 0.00);
+    Material0_Specular : array[0..3] of GLfloat = (1.0, 0.7, 0.7, 0.00);
+    Material0_Emission : array[0..3] of GLfloat = (0.1, 0.1, 0.1, 0.00);
+    Material0_Shine = 20.00;
+    //
+    Material1_Diffuse  : array[0..3] of GLfloat = (0.0, 0.0, 0.5, 0.00);
+    Material1_Specular : array[0..3] of GLfloat = (0.7, 0.7, 1.0, 0.00);
+    Material1_Emission : array[0..3] of GLfloat = (0.1, 0.1, 0.1, 0.00);
+    Material1_Shine = 50.00;
+
+    // Lichten
+    Light0_Position : array[0..3] of GLfloat = ( -1.0, 2.5, -1.0, 1.00 );
+    Light0_Direction : array[0..3] of GLfloat  = (0.0, -1.0, 0.0, 0.0); //recht naar beneden
+    Light0_Ambient : array[0..3] of GLfloat  = (0.4, 0.4, 0.4, 1.0);
+
+    // Het camera-standpunt
+    Camera0_Position : array[0..2] of GLFloat = (0.0, 0.5, -2.0);
+    Camera0_Rotation : array[0..2] of GLFloat = (0.0, 0.0, 0.0);
+
+    // De positie en rotatie van de stoel
+    Stoel_Position : array[0..2] of GLFloat = (0.0, 0.0, 0.0);
+    Stoel_Rotation : array[0..2] of GLFloat = (0.0, 0.0, 0.0);
+
+    // de stoel afmetingen
+    Plateau_Dikte = 0.05;  //dikte van het plateau waarop de stoel staat
+    Plateau_Zijde = 0.7;  //de lengte van een halve zijde van het plateau
+    Engine_AsDikte = 0.05; //de dikte van een motor-as
+    Engine_AsLengte = 0.5; //de lengte van een motor-as
+
+
+procedure init;
+procedure display; stdcall;
+procedure reshape(w,h: GLint); stdcall;
+procedure keyboard(key: char; x, y: GLint); stdcall;
+procedure timer(value: GLint); stdcall;
+
+procedure SetupCamera;
+procedure SetupMaterial(i: integer);
+procedure SetupLights;
+
+procedure DrawChair;
+procedure DrawEngines;
+
+implementation
+{ $R *.RES}
+
+
+
+procedure init();
+begin
+  // Lichten instellen
+  SetupLights;
+  // Geen alpha kanaal gebruiken, alleen RGB
+  glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_FALSE);
+  glClearColor(0.0, 0.0, 0.0, 0.0);
+
+  // De diepte-buffer
+  glDepthFunc(GL_LESS);
+  glDepthRange(0.0, 1.0);
+  glDepthMask(GL_TRUE);
+  glEnable(GL_DEPTH_TEST);
+
+  // Backface-culling
+  glFrontFace(GL_CCW);
+  glCullFace(GL_BACK);
+  glEnable(GL_CULL_FACE);
+(*
+  // tbv texturing
+  glTexEnvf( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE );
+*)
+  glDisable(GL_BLEND);
+end;
+
+
+procedure display;
+begin
+  // het scherm wissen
+  glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT);
+
+  //een vast licht (op 1 plek blijvend, net als een gebouw)
+  // de relatieve positie van het licht tov. de camera veranderd niet!
+{  glDisable(GL_TEXTURE_2D);}
+  glPushMatrix();
+    glLoadIdentity();
+    glLightfv(GL_LIGHT0, GL_POSITION, @Light0_Position);
+//    Light0_Direction[0] := sin(degTorad(Camera0_Rotation[1]-90));
+//    Light0_Direction[2] := cos(degTorad(Camera0_Rotation[1]-90));
+//    glLightfv(GL_LIGHT0, GL_SPOT_DIRECTION, @Light0_Direction);
+  glPopMatrix();
+{  glEnable(GL_TEXTURE_2D);}
+
+  // de camera-positie instellen
+  SetupCamera;
+  // de stoel tekenen
+  DrawChair;
+
+  // display-buffers wisselen
+  glFlush();
+  glutSwapBuffers();
+end;
+
+
+procedure reshape(w,h: GLint);
+begin
+  if w<=h then aspectRatio := h/w
+          else aspectRatio := w/h;
+  glViewport(0,0,w,h);
+  glMatrixMode(GL_PROJECTION);
+  glLoadIdentity();
+  gluPerspective(FOV, aspectRatio, nearDistance, viewDistance);
+  //  glFrustum(-0.7*aspectRatio,0.7*aspectRatio, -5,5, 0.1,1.0);
+(*
+  if w<=h then gluOrtho2D(0.0,1.0, 0.0,aspectRatio)
+          else gluOrtho2D(0.0,aspectRatio, 0.0,1.0);
+*)
+  glMatrixMode(GL_MODELVIEW);
+  display;
+end;
+
+
+procedure keyboard(key: char; x, y: GLint);
+begin
+  case key of
+    #27 : halt(1);
+    '9' {PgUp}: begin  // de camera hoger plaatsen
+           camHeight := camHeight + 0.1;
+           glutPostRedisplay();
+         end;
+    '3' {PgDn}: begin  // de camera lager plaatsen
+           camHeight := camHeight - 0.1;
+           glutPostRedisplay();
+         end;
+    '4': begin  // de camera linksom draaien om de stoel
+           Camera0_Rotation[1] := Camera0_Rotation[1] - 1.0;
+           glutPostRedisplay();
+         end;
+    '6': begin  // de camera rechtsom draaien om de stoel
+           Camera0_Rotation[1] := Camera0_Rotation[1] + 1.0;
+           glutPostRedisplay();
+         end;
+    '8': begin  // de camera bovenom draaien om de stoel
+           Camera0_Rotation[0] := Camera0_Rotation[0] - 1.0;
+           glutPostRedisplay();
+         end;
+    '2': begin  // de camera onderom draaien om de stoel
+           Camera0_Rotation[0] := Camera0_Rotation[0] + 1.0;
+           glutPostRedisplay();
+         end;
+  end;
+end;
+
+
+procedure timer(value: GLint); stdcall;
+begin
+(*
+  Camera0_Rotation[0] := Camera0_Rotation[0] + 0.0;
+  Camera0_Rotation[1] := Camera0_Rotation[1] + 1.0;
+  Camera0_Rotation[2] := Camera0_Rotation[2] + 0.0;
+*)
+  //
+  {glutTimerFunc( 10, timer, value);}
+  glutPostRedisplay();
+end;
+
+
+
+
+procedure SetupCamera;
+begin
+(*
+  {stilstaande camera}
+  Camera0_Position[0] := 0.0;
+  Camera0_Position[1] := camHeight;
+  Camera0_Position[2] := camDistance;
+*)
+  {roterende camera}
+  Camera0_Position[0] := sin(degTorad(Camera0_Rotation[1]-90));
+  Camera0_Position[1] := camHeight;
+  Camera0_Position[2] := cos(degTorad(Camera0_Rotation[1]-90));
+(*
+  Camera0_Position[0] := Camera0_Position[0];
+  Camera0_Position[1] := Camera0_Position[1] + cos(degTorad(Camera0_Rotation[0]-90));
+  Camera0_Position[2] := Camera0_Position[2] * sin(degTorad(Camera0_Rotation[0]-90));
+*)
+  Camera0_Position[0] := Camera0_Position[0]*camDistance - Stoel_Position[0];
+  Camera0_Position[1] := Camera0_Position[1]*camDistance - Stoel_Position[1];
+  Camera0_Position[2] := Camera0_Position[2]*camDistance - Stoel_Position[2];
+
+  // De camera kijkt altijd naar de stoel
+  glLoadIdentity();
+  gluLookAt(Camera0_Position[0], Camera0_Position[1], Camera0_Position[2],
+            Stoel_Position[0],   Stoel_Position[1],   Stoel_Position[2],
+            0.0,1.0,0.0);
+end;
+
+
+
+procedure SetupMaterial(i: integer);
+begin
+  case i of
+    0: begin
+         glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, @Material0_Diffuse);
+         glMaterialfv(GL_FRONT, GL_SPECULAR, @Material0_Specular);
+         glMaterialfv(GL_FRONT, GL_EMISSION, @Material0_Emission);
+         glMaterialf(GL_FRONT, GL_SHININESS, Material0_Shine);
+       end;
+    1: begin
+         glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, @Material1_Diffuse);
+         glMaterialfv(GL_FRONT, GL_SPECULAR, @Material1_Specular);
+         glMaterialfv(GL_FRONT, GL_EMISSION, @Material1_Emission);
+         glMaterialf(GL_FRONT, GL_SHININESS, Material1_Shine);
+       end;
+  end;
+end;
+
+
+procedure SetupLights;
+begin
+  glLightModeli(GL_LIGHT_MODEL_LOCAL_VIEWER, integer(GL_TRUE));
+  glLightModeli(GL_LIGHT_MODEL_TWO_SIDE, integer(GL_FALSE));
+  glLightModelfv(GL_LIGHT_MODEL_AMBIENT, @Light0_Ambient);
+  glLightfv(GL_LIGHT0, GL_POSITION, @Light0_Position);
+//  glLightfv(GL_LIGHT0, GL_SPOT_DIRECTION, @Light0_Direction);
+//  glLightf(GL_LIGHT0, GL_QUADRATIC_ATTENUATION, 0.0);
+//  glLightf(GL_LIGHT0, GL_SPOT_CUTOFF, 60.0);
+
+  glShadeModel({GL_FLAT}GL_SMOOTH);
+  glEnable(GL_LIGHT0);
+  glEnable(GL_LIGHTING);
+end;
+
+
+
+procedure DrawChair;
+const dikte = Plateau_Dikte;  //dikte van het plateau waarop de stoel staat
+      zijde = Plateau_Zijde;  //de lengte van een halve zijde van het plateau
+begin
+  // Materiaal kiezen
+  SetupMaterial(0);
+(*
+  // rotatie & positie van de stoel instellen
+  glRotatef(Stoel_Rotation[0], 1.0, 0.0, 0.0);
+  glRotatef(Stoel_Rotation[1], 0.0, 1.0, 0.0);
+  glRotatef(Stoel_Rotation[2], 0.0, 0.0, 1.0);
+  glTranslatef(Stoel_Position[0], Stoel_Position[1], Stoel_Position[2]);
+*)
+  //
+  glPushMatrix();
+
+  // de stoel (het plateau ervan) tekenen
+  glBegin(GL_TRIANGLES);
+    // de bovenkant            //           0
+    glVertex3f(    0.0,    0.0, -zijde);//0         /\
+    glVertex3f( -zijde,    0.0,  zijde);//1        /  \
+    glVertex3f(  zijde,    0.0,  zijde);//2    1  /____\  2
+    // de onderkant
+    glVertex3f(    0.0, -dikte, -zijde);//3
+    glVertex3f(  zijde, -dikte,  zijde);//4
+    glVertex3f( -zijde, -dikte,  zijde);//5
+    // een zijkant
+    glVertex3f(    0.0,    0.0, -zijde);//0
+    glVertex3f(    0.0, -dikte, -zijde);//3
+    glVertex3f( -zijde, -dikte,  zijde);//5
+    glVertex3f(    0.0,    0.0, -zijde);//0
+    glVertex3f( -zijde, -dikte,  zijde);//5
+    glVertex3f( -zijde,    0.0,  zijde);//1
+    // een zijkant
+    glVertex3f( -zijde,    0.0,  zijde);//1
+    glVertex3f( -zijde, -dikte,  zijde);//5
+    glVertex3f(  zijde,    0.0,  zijde);//2
+    glVertex3f( -zijde, -dikte,  zijde);//5
+    glVertex3f(  zijde, -dikte,  zijde);//4
+    glVertex3f(  zijde,    0.0,  zijde);//2
+    // een zijkant
+    glVertex3f(  zijde,    0.0,  zijde);//2
+    glVertex3f(  zijde, -dikte,  zijde);//4
+    glVertex3f(    0.0, -dikte, -zijde);//3
+    glVertex3f(  zijde,    0.0,  zijde);//2
+    glVertex3f(    0.0, -dikte, -zijde);//3
+    glVertex3f(    0.0,    0.0, -zijde);//0
+  glEnd();
+
+  glPopMatrix();
+  // De motoren tekenen
+  DrawEngines;
+end;
+
+
+procedure DrawEngines;
+const dikte = Engine_AsDikte;
+      lengte = Engine_AsLengte;
+var qObj: PGLUquadricObj;
+begin
+  {glDisable(GL_CULL_FACE);}
+  // Materiaal kiezen
+  SetupMaterial(1);
+  // een cyliner definiëren
+  qObj := gluNewQuadric();
+  gluQuadricNormals(qObj, GLU_SMOOTH);
+
+  // De voorste motor tekenen
+  glPushMatrix();
+    glRotatef(90.0, 1.0, 0.0, 0.0);
+    glTranslatef(0.0, -Plateau_Zijde+0.05, Plateau_Dikte);
+    // een cyliner tekenen
+    gluCylinder(qObj,dikte,dikte,lengte,8,10);
+  glPopMatrix();
+
+  // De motor links-achter tekenen
+  glPushMatrix();
+    glRotatef(90.0, 1.0, 0.0, 0.0);
+    glTranslatef(-Plateau_Zijde+0.05, Plateau_Zijde-0.05, Plateau_Dikte);
+    // een cyliner tekenen
+    gluCylinder(qObj,dikte,dikte,lengte,8,10);
+  glPopMatrix();
+
+  // De motor rechts-achter tekenen
+  glPushMatrix();
+    glRotatef(90.0, 1.0, 0.0, 0.0);
+    glTranslatef(Plateau_Zijde-0.05, Plateau_Zijde-0.05, Plateau_Dikte);
+    // een cyliner tekenen
+    gluCylinder(qObj,dikte,dikte,lengte,8,10);
+  glPopMatrix();
+
+  {glEnable(GL_CULL_FACE);}
+end;
+
+end.
+

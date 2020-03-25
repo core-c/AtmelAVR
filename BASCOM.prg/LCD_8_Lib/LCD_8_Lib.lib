@@ -1,0 +1,875 @@
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;!!!!! 1) Er mogen GEEN Tab-tekens in de library voorkomen !!!!!
+;!!!!! 2) $EXTERNAL is fout; $EXTERNAL is goed             !!!!!
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;!!!!! CONSTANTEN DIE IN BASCOM GEDECLAREERD MOETEN WORDEN !!!!!
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;;--- Toegekende poorten & pinnen ----------\
+;;--- De control-port en control-lijnen -----
+; * .equ Lcd_ctrl_port = Porta ; De Control -port(alleen Als Output)
+; * .equ Lcd_ctrl_ddr = Ddra ; Het Data -direction -register Van De Control -port
+; * .equ Lcd_rs = Pa5 ; Rs Op Pin 5 Van Poort A
+; * .equ Lcd_rw = Pa6 ; Rw Op Pin 6 Van Poort A
+; * .equ Lcd_e = Pa7 ; E Op Pin 7 Van Poort A
+;;--- De data-port en data-lijnen -----------
+; * .equ Lcd_data_port = Portc ; De Data -port Db7 -0(input / Output)
+; * .equ Lcd_data_ddr = Ddrc ;
+; * .equ Lcd_data_in = Pinc ; Input Data Lezen Van Deze Poort
+; * .equ Lcd_busy = Pc7 ; Busy -flag Op Pin 7 Van Poort C( = Db7)
+;;--- De datalijnen -------------------------
+; * .equ Lcd_db0 = Pc0
+; * .equ Lcd_db1 = Pc1
+; * .equ Lcd_db2 = Pc2
+; * .equ Lcd_db3 = Pc3
+; * .equ Lcd_db4 = Pc4
+; * .equ Lcd_db5 = Pc5
+; * .equ Lcd_db6 = Pc6
+; * .equ Lcd_db7 = Pc7
+;;------------------------------------------/
+
+
+
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;!!!!! Library constanten                                  !!!!!
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;--- CONSTANTEN ---------------------------\
+;--- I/O -----------------------------------
+.equ Pin_as_input = 0 ; Een Pin Als Input Instellen
+.equ Pin_as_output = 1 ; Een Pin Als Output Instellen
+.equ Port_as_input = &H00 ; Een Poort Als Input Instellen
+.equ Port_as_output = &HFF ; Een Poort Als Output Instellen
+.equ Input_port_tris = &H00 ; Een Input -poort Tristate Instellen
+.equ Input_port_pull = &HFF ; Een Input -poort Pull -up Weerstanden Inschakelen
+
+.equ Eos_symbol = "$" ; End -of -string Teken
+
+;--- LCD Begin-adressen van elke regel -----
+.equ Addrline0 = &H00
+.equ Addrline1 = &H40
+.equ Addrline2 = &H14
+.equ Addrline3 = &H54
+;--- Bits ----------------------------------
+.equ Rs_command = 0 ; Lcd_rs -bit Bij Commandos
+.equ Rs_data = 1 ; Lcd -rs -bit Bij Data
+.equ Rw_write = 0 ; Lcd_rw -bit Bij Schrijven Naar Lcd -geheugen
+.equ Rw_read = 1 ; Lcd_rw -bit Bij Lezen Van Lcd -geheugen
+;--- Toegekende bits tbv. commandos -------
+.equ Cmd_ddramaddress = &B10000000 ; Databus Bits 7..0
+.equ Cmd_cgramaddress = &B01000000
+.equ Cmd_functionset = &B00100000
+.equ Cmd_cursordisplayshift = &B00010000
+.equ Cmd_displaymode = &B00001000
+.equ Cmd_entrymode = &B00000100
+.equ Cmd_cursorhome = &B00000010
+.equ Cmd_clear = &B00000001
+;--- Geldige DB7..0-bits bij commandos ----
+.equ Mask_busyflag = &B10000000
+.equ Mask_ddramaddress = &B01111111
+.equ Mask_cgramaddress = &B00111111
+.equ Mask_functionset = &B00011100
+.equ Mask_cursordisplayshift = &B00001100
+.equ Mask_displaymode = &B00000111
+.equ Mask_entrymode = &B00000011
+;--- Function Set bits ---------------------
+.equ Data_len_4 = &B00000000 ; 4 -bits If
+.equ Data_len_8 = &B00010000 ; 8 -bits If
+.equ Line_count_1 = &B00000000 ; 1 / 8 Or 1 / 11 Duty(1 Line)
+.equ Line_count_2 = &B00001000 ; 1 / 16 Duty(2 Lines)
+.equ Font_5x7 = &B00000000 ; 5x7 Dots Font
+.equ Font_5x10 = &B00000100 ; 5x10 Dots Font
+;--- CursorDisplayShift bits ---------------
+.equ Shift_display_left = &B00000000 ; Beweeg Display & Cursor Naar Links
+.equ Shift_display_right = &B00001000 ; Beweeg Display & Cursor Naar Rechts
+.equ Shift_cursor_left = &B00000000 ; Beweeg De Cursor Naar Links
+.equ Shift_cursor_right = &B00000100 ; Beweeg De Cursor Naar Rechts
+;--- DisplayMode bits ----------------------
+.equ Display_off = &B00000000 ; Lcd -display Uit
+.equ Display_on = &B00000100 ; Lcd -display Aan
+.equ Cursor_off = &B00000000 ; Cursor Uit
+.equ Cursor_on = &B00000010 ; Cursor Aan
+.equ Cursor_blink_off = &B00000000 ; Cursor Knipperen Uit
+.equ Cursor_blink_on = &B00000001 ; Cursor Knipperen Aan
+;--- Entry Mode bits -----------------------
+.equ Auto_decrement = &B00000000 ; Auto -verlagen Video -adres
+.equ Auto_increment = &B00000010 ; Auto -verhogen Video -adres
+.equ No_display_shift = &B00000000 ; Display -shift Uitschakelen
+.equ Display_shift = &B00000001 ; Display -shift Inschakelen
+;------------------------------------------/
+
+
+
+
+
+
+
+
+;-----------------------------------------------
+;--- LCD_SetCTRLPins
+;--- De CTRL poort/pins instellen als output.
+;----------------------------------------------\
+[lcd_setctrlpins]
+Lcd_setctrlpins:
+ ;--- Reset de pin.
+ ; pinnen als input instellen
+  * Cbi Lcd_ctrl_ddr , Lcd_rs
+  * Cbi Lcd_ctrl_ddr , Lcd_rw
+  * Cbi Lcd_ctrl_ddr , Lcd_e
+ ; tristate instellen
+  * Cbi Lcd_ctrl_port , Lcd_rs
+  * Cbi Lcd_ctrl_port , Lcd_rw
+  * Cbi Lcd_ctrl_port , Lcd_e
+ ;--- Opnieuw instellen.
+ ; pinnen als output instellen
+  * Sbi Lcd_ctrl_ddr , Lcd_rs
+  * Sbi Lcd_ctrl_ddr , Lcd_rw
+  * Sbi Lcd_ctrl_ddr , Lcd_e
+ ; Push-Pull zero output
+  * Cbi Lcd_ctrl_port , Lcd_rs
+  * Cbi Lcd_ctrl_port , Lcd_rw
+  * Cbi Lcd_ctrl_port , Lcd_e
+ ret
+[end]
+;----------------------------------------------/
+
+
+;-----------------------------------------------
+;--- LCD_SetDATAPort_AS_OUTPUT
+;--- De DATA poort/pins instellen als output.
+;----------------------------------------------\
+[lcd_setdataport_as_output]
+Lcd_setdataport_as_output:
+ push R16
+ ; poort zeker vrijgeven..
+ Ldi R16 , Port_as_input
+  * Out Lcd_data_ddr , R16
+ Ldi R16 , Input_port_tris
+  * Out Lcd_data_port , R16
+ ; ..en opnieuw instellen.
+ Ldi R16 , Port_as_output ; Output
+  * Out Lcd_data_ddr , R16
+ ldi R16,0    ; Push-Pull zero output
+  * Out Lcd_data_port , R16
+ pop R16
+ ret
+[end]
+;----------------------------------------------/
+
+
+;-----------------------------------------------
+;--- LCD_SetDATAPort_AS_INPUT
+;--- De DATA poort/pins instellen als input.
+;----------------------------------------------\
+[lcd_setdataport_as_input]
+Lcd_setdataport_as_input:
+ push R16
+ Ldi R16 , Port_as_input ; Poort Zeker Vrijgeven..
+  * Out Lcd_data_ddr , R16
+ Ldi R16 , Input_port_tris
+  * Out Lcd_data_port , R16
+ pop R16
+ ret
+[end]
+;----------------------------------------------/
+
+
+;-----------------------------------------------
+;--- LCD_Send
+;--- input: R16 = byte te verzenden
+;----------------------------------------------\
+[lcd_send]
+Lcd_send:
+ ; Tenminste 40 ns wachten alvorens Enable op 1. (<1 clockcycle @ 7.372800 MHz)
+ nop
+ nop
+ nop
+ ; De Enable-puls moet tenminste 230 ns op 1 blijven. (<1 clockcycle @ 7.372800 MHz)
+  * Sbi Lcd_ctrl_port , Lcd_e ; E = 1
+  * Out Lcd_data_port , R16
+  * Cbi Lcd_ctrl_port , Lcd_e ; E = 0 , De Waarde Wordt Nu Overgedragen
+ ret
+[end]
+;----------------------------------------------/
+
+
+;-----------------------------------------------
+;--- LCD_Receive
+;--- output: R16 = gelezen byte
+;----------------------------------------------\
+[lcd_receive]
+$EXTERNAL Lcd_delay_2us
+Lcd_receive:
+  * Sbi Lcd_ctrl_port , Lcd_e ; E = 1
+ rcall LCD_Delay_2us   ; 1-2 us wachten
+  * In R16 , Lcd_data_in ; Data Input
+  * Cbi Lcd_ctrl_port , Lcd_e ; E = 0
+ ret
+[end]
+;----------------------------------------------/
+
+
+;-----------------------------------------------
+;--- LCD_WaitWhileBusy
+;--- Wacht op busy-signaal
+;----------------------------------------------\
+[lcd_waitwhilebusy]
+$EXTERNAL Lcd_setdataport_as_input , Lcd_receive , Lcd_setdataport_as_output
+Lcd_waitwhilebusy:
+ push R16
+ rcall LCD_SetDATAPort_AS_INPUT
+
+  * Cbi Lcd_ctrl_port , Lcd_rs ; Rs = 0(commando)
+  * Sbi Lcd_ctrl_port , Lcd_rw ; R / W = 1(lezen)
+Waitwhileflag1:
+ rcall LCD_Receive   ; Commando lezen van LCD (incl. busy flag)
+ Andi R16 , Mask_busyflag ; Busy Flag Filteren
+ brne WaitWhileFlag1
+
+ ; poort weer omschakelen van richting
+  * Cbi Lcd_ctrl_port , Lcd_rw ; R / W = 0(schrijven)
+ rcall LCD_SetDATAPort_AS_OUTPUT
+ pop R16
+ ret
+[end]
+;----------------------------------------------/
+
+
+;-----------------------------------------------
+;--- Commando uitvoeren (schrijven)
+;--- input: R16 = commando
+;----------------------------------------------\
+[lcd_command]
+$EXTERNAL Lcd_waitwhilebusy , Lcd_send
+Lcd_command:
+ rcall LCD_WaitWhileBusy  ; wacht indien LCD bezet
+  * Cbi Lcd_ctrl_port , Lcd_rs ; Rs = 0(commando)
+  * Cbi Lcd_ctrl_port , Lcd_rw ; R / W = 0(schrijven)
+ rcall LCD_Send   ; Commando(R16) zenden naar LCD
+ ret
+[end]
+;----------------------------------------------/
+
+;-----------------------------------------------
+;--- Commando uitvoeren (schrijven)
+;--- input: R16 = commando
+;----------------------------------------------\
+[lcd_command_]
+$EXTERNAL Lcd_send
+Lcd_command_:
+  * Cbi Lcd_ctrl_port , Lcd_rs ; Rs = 0(commando)
+  * Cbi Lcd_ctrl_port , Lcd_rw ; R / W = 0(schrijven)
+ rcall LCD_Send   ; Commando(R16) zenden naar LCD
+ ret
+[end]
+;----------------------------------------------/
+
+
+;-----------------------------------------------
+;--- Schrijf data
+;--- input: R16 = data
+;----------------------------------------------\
+[lcd_data]
+$EXTERNAL Lcd_waitwhilebusy , Lcd_send
+Lcd_data:
+ rcall LCD_WaitWhileBusy  ; wacht indien LCD bezet
+  * Sbi Lcd_ctrl_port , Lcd_rs ; Rs = 1(data)
+  * Cbi Lcd_ctrl_port , Lcd_rw ; R / W = 0(schrijven)
+ rcall LCD_Send   ; Data(R16) zenden naar LCD
+ ret
+[end]
+;----------------------------------------------/
+
+
+;-----------------------------------------------
+;--- Lees data
+;--- output: R16 = gelezen byte
+;----------------------------------------------\
+[lcd_read_data]
+$EXTERNAL Lcd_waitwhilebusy , Lcd_delay_100us , Lcd_setdataport_as_input , Lcd_receive , Lcd_setdataport_as_output
+Lcd_read_data:
+ rcall LCD_WaitWhileBusy  ; wacht indien LCD bezet
+ rcall LCD_Delay_100us   ; tenminste 40us wachten tot de auto-increment klaar is
+ rcall LCD_SetDATAPort_AS_INPUT
+
+  * Sbi Lcd_ctrl_port , Lcd_rs ; Rs = 1(data)
+  * Sbi Lcd_ctrl_port , Lcd_rw ; R / W = 1(lezen)
+ rcall LCD_Receive   ; Data inlezen van LCD (in R16)
+
+ ; poort weer omschakelen van richting
+  * Cbi Lcd_ctrl_port , Lcd_rw ; R / W = 0(schrijven)
+ rcall LCD_SetDATAPort_AS_OUTPUT
+ ret
+[end]
+;----------------------------------------------/
+
+
+;-----------------------------------------------
+;--- LCD_FunctionSet
+;--- input: R16 = b2  : 0=5x7 dots font, 1=5x10 dots font
+;---              b3  : 0=1/8 or 1/11 Duty (1 line), 1=1/16 Duty (2 lines)
+;---              b4  : 0=4-bit, 1=8-bit
+;----------------------------------------------\
+[lcd_functionset]
+$EXTERNAL Lcd_waitwhilebusy , Lcd_command_
+Lcd_functionset:
+ rcall LCD_WaitWhileBusy ; Entry Point(met Busy -flag Test)
+ Andi R16 , Mask_functionset
+ Ori R16 , Cmd_functionset
+ rcall LCD_Command_   ; commando zonder busy-flag test aanroepen
+ ret
+[end]
+;----------------------------------------------/
+
+;-----------------------------------------------
+;--- LCD_FunctionSet_
+;--- input: R16 = b2  : 0=5x7 dots font, 1=5x10 dots font
+;---              b3  : 0=1/8 or 1/11 Duty (1 line), 1=1/16 Duty (2 lines)
+;---              b4  : 0=4-bit, 1=8-bit
+;----------------------------------------------\
+[lcd_functionset_]
+$EXTERNAL Lcd_command_
+Lcd_functionset_:
+ Andi R16 , Mask_functionset ; Entry Point(zonder Busy -flag Test)
+ Ori R16 , Cmd_functionset
+ rcall LCD_Command_   ; commando zonder busy-flag test aanroepen
+ ret
+[end]
+;----------------------------------------------/
+
+
+;-----------------------------------------------
+;--- LCD-scherm wissen
+;----------------------------------------------\
+[lcd_clear]
+$EXTERNAL Lcd_command
+Lcd_clear:
+ push R16
+ Ldi R16 , Cmd_clear
+ rcall LCD_Command
+ pop R16
+ ret
+[end]
+;----------------------------------------------/
+
+
+;-----------------------------------------------
+;--- LCD-cursor naar Home-positie
+;----------------------------------------------\
+[lcd_home]
+$EXTERNAL Lcd_command
+Lcd_home:
+ push R16
+ Ldi R16 , Cmd_cursorhome
+ rcall LCD_Command
+ pop R16
+ ret
+[end]
+;----------------------------------------------/
+
+
+;-----------------------------------------------
+;--- LCD-Entry-mode instellen.
+;--- input: R16 = b0 : 0=no display shift, 1=display shift
+;---              b1 : 0=auto-AUTO_DECREMENT, 1=auto-AUTO_INCREMENT
+;----------------------------------------------\
+[lcd_entrymode]
+$EXTERNAL Lcd_command
+Lcd_entrymode:
+ Andi R16 , Mask_entrymode
+ Ori R16 , Cmd_entrymode
+ rcall LCD_Command
+ ret
+[end]
+;----------------------------------------------/
+
+
+;-----------------------------------------------
+;--- LCD-Display-mode instellen.
+;--- input: R16 = b0 : 0=cursor blink off, 1=cursor blink on (als b1 = 1)
+;---              b1 : 0=cursor off,  1=cursor on
+;---              b2 : 0=display off, 1=display on (display data remains in DD-RAM)
+;----------------------------------------------\
+[lcd_displaymode]
+$EXTERNAL Lcd_command
+Lcd_displaymode:
+ Andi R16 , Mask_displaymode
+ Ori R16 , Cmd_displaymode
+ rcall LCD_Command
+ ret
+[end]
+;----------------------------------------------/
+
+
+;-----------------------------------------------
+;--- LCD-Cursor-Display-mode instellen.
+;--- input: R16 = b2 : 0=shift left, 1=shift right
+;---              b3 : 0=cursor-shift, 1=display-shift
+;----------------------------------------------\
+[lcd_cursordisplayshift]
+$EXTERNAL Lcd_command
+Lcd_cursordisplayshift:
+ Andi R16 , Mask_cursordisplayshift
+ Ori R16 , Cmd_cursordisplayshift
+ rcall LCD_Command
+ ret
+[end]
+;----------------------------------------------/
+
+
+;-----------------------------------------------
+;--- LCD-SetCharGenAddr
+;--- Instellen van het Character-Generator-RAM adres.
+;--- CGRAM data lezen/schrijven na dit commando.
+;--- input: R16 = b0-5 : CGRAM adres
+;----------------------------------------------\
+[lcd_setchargenaddr]
+$EXTERNAL Lcd_command
+Lcd_setchargenaddr:
+ Andi R16 , Mask_cgramaddress
+ Ori R16 , Cmd_cgramaddress
+ rcall LCD_Command
+ ret
+[end]
+;----------------------------------------------/
+
+
+;-----------------------------------------------
+;--- LCD-SetDisplayAddr
+;--- Instellen van het Display-Data-RAM adres.
+;--- DDRAM data lezen/schrijven na dit commando.
+;--- input: R16 = b0-6 : DDRAM adres
+;----------------------------------------------\
+[lcd_setdisplayaddr]
+$EXTERNAL Lcd_command
+Lcd_setdisplayaddr:
+ Ori R16 , Cmd_ddramaddress
+ rcall LCD_Command
+ ret
+[end]
+;----------------------------------------------/
+
+
+;-----------------------------------------------
+;--- LCD_GetDisplayAddr
+;--- Resulteer de adres-counter waarde (DDRAM/CGRAM).
+;--- output: R16 bit6-0 : DDRAM/CGRAM adres (bit 7 wordt altijd 0)
+;----------------------------------------------\
+[lcd_getdisplayaddr]
+$EXTERNAL Lcd_waitwhilebusy , Lcd_setdataport_as_input , Lcd_receive , Lcd_setdataport_as_output
+Lcd_getdisplayaddr:
+ rcall LCD_WaitWhileBusy
+ rcall LCD_SetDATAPort_AS_INPUT
+
+  * Cbi Lcd_ctrl_port , Lcd_rs ; Rs = 0(commando)
+  * Sbi Lcd_ctrl_port , Lcd_rw ; R / W = 1(lezen)
+ rcall LCD_Receive   ;
+  * Andi R16 , Mask_ddramaddress ; Busy Flag Strippen
+
+ ; poort weer omschakelen van richting
+  * Cbi Lcd_ctrl_port , Lcd_rw ; R / W = 0(schrijven)
+ rcall LCD_SetDATAPort_AS_OUTPUT
+ ret
+[end]
+;----------------------------------------------/
+
+
+;-----------------------------------------------
+;--- LCD_Init
+;----------------------------------------------\
+[lcd_init]
+$EXTERNAL Lcd_setctrlpins , Lcd_setdataport_as_output , Lcd_delay_15ms , Lcd_delay_4_1ms , Lcd_functionset_ , Lcd_functionset , Lcd_displaymode , Lcd_clear , Lcd_home , Lcd_entrymode
+Lcd_init:
+ push R16
+ rcall LCD_SetCTRLPins   ; LCD-Control poorten op AVR als output instellen
+ rcall LCD_SetDATAPort_AS_OUTPUT ; zo ook de LCD-Data poort op de AVR
+
+ rcall LCD_Delay_15ms   ; 15 milli-seconde pauze
+ rcall LCD_Delay_15ms   ; 15 milli-seconde pauze
+
+ ; De InterFace initialiseren.
+ ; moet 3x gebeuren met pauzes ertussen....
+ ; instellen op 8-bits interface
+ Ldi R16 , Data_len_8 ; Als 8 -bit If Instellen
+ rcall LCD_FunctionSet_  ; entry point zonder BF-test
+ ;
+ rcall LCD_Delay_4_1ms   ; 4.1 milli-seconde pauze
+ ;
+ Ldi R16 , Data_len_8 ; Als 8 -bit If Instellen
+ rcall LCD_FunctionSet_  ; entry point zonder BF-test
+ ;
+ rcall LCD_Delay_100us   ; 100 micro-seconde pauze
+ ;
+ Ldi R16 , Data_len_8 ; Als 8 -bit If Instellen
+ rcall LCD_FunctionSet_  ; entry point zonder BF-test
+
+ ;!! vanaf nu kan de BUSY-flag worden afgevraagd....
+
+ ; Aantal regels en font instellen
+ Ldi R16 ,(data_len_8 + Line_count_2 + Font_5x7)
+ rcall LCD_FunctionSet   ; entry point met BF-test
+
+ ; display-mode initialiseren (alles uit)
+ Ldi R16 ,(display_off + Cursor_off + Cursor_blink_off)
+ rcall LCD_DisplayMode
+ ; LCD-scherm wissen
+ rcall LCD_Clear
+ rcall LCD_Home
+ ; entry-mode instellen (AUTO-INCREMENT)
+ Ldi R16 ,(auto_increment + No_display_shift)
+ rcall LCD_EntryMode
+ ; Scherm aan, cursor aan, knipperen aan
+ Ldi R16 ,(display_on + Cursor_on + Cursor_blink_on)
+ rcall LCD_DisplayMode
+
+ rcall LCD_Delay_15ms   ; 15 milli-seconde pauze
+ pop R16
+ ret
+[end]
+;----------------------------------------------/
+
+
+
+
+;-----------------------------------------------
+;--- LCD_XY2Addr
+;--- input: R17 = column [0..19]
+;---        R18 = row [0..3]
+;--- output: R16  = DDRAM Address
+;----------------------------------------------\
+[lcd_xy2addr]
+Lcd_xy2addr:
+ push R18
+ cpi R18, 0
+ brne _XY1
+ ldi R18, AddrLine0
+ rjmp _XY
+_xy1:
+ cpi R18, 1
+ brne _XY2
+ ldi R18, AddrLine1
+ rjmp _XY
+_xy2:
+ cpi R18, 2
+ brne _XY3
+ ldi R18, AddrLine2
+ rjmp _XY
+_xy3:
+ cpi R18, 3
+ brne _XY
+ ldi R18, AddrLine3
+_xy:
+ mov R16, R18
+ add R16, R17
+ pop R18
+ ret
+[end]
+;----------------------------------------------/
+
+
+;-----------------------------------------------
+;--- LCD_Addr2XY
+;--- input: R16  = DDRAM Address
+;--- output: R17 = column [0..19]
+;---         R18 = row [0..3]
+;----------------------------------------------\
+[lcd_addr2xy]
+Lcd_addr2xy:
+ push R19
+ ; R16 = [$00..$13] || [$40..$53] || [$14..$27] || [$54..$67]
+ ; cursor nu nog ergens op de 4e regel?
+ cpi R16, AddrLine3
+ brlo _Addr2
+ ldi R19, AddrLine3
+ ldi R18, 3
+ rjmp _Addr
+ ; cursor nu nog ergens op de 2e regel?
+_addr2:
+ cpi R16, AddrLine1
+ brlo _Addr3
+ ldi R19, AddrLine1
+ ldi R18, 1
+ rjmp _Addr
+ ; cursor nu nog ergens op de 3e regel?
+_addr3:
+ cpi R16, AddrLine2
+ brlo _Addr1
+ ldi R19, AddrLine2
+ ldi R18, 2
+ rjmp _Addr
+ ; cursor nu nog ergens op de 1e regel
+_addr1:
+ ldi R19, AddrLine0
+ ldi R18, 0
+_addr:
+ ;cursor positie resulteren
+ mov R17, R16
+ Sub R17 , R19
+ pop R19
+ ret
+[end]
+;----------------------------------------------/
+
+
+;-----------------------------------------------
+;--- LCD_SetCursorXY
+;--- De cursor plaatsen op XY(column,row)
+;--- input: R17 = column [0..19]
+;---        R18 = row [0..3]
+;----------------------------------------------\
+[lcd_setcursorxy]
+$EXTERNAL Lcd_xy2addr , Lcd_setdisplayaddr
+Lcd_setcursorxy:
+ push R16
+ rcall LCD_XY2Addr
+ rcall LCD_SetDisplayAddr
+ pop R16
+ ret
+[end]
+;----------------------------------------------/
+
+
+;-----------------------------------------------
+;--- LCD_GetCursorXY
+;--- De cursorpositie lezen
+;--- output: R17 = column [0..19]
+;---         R18 = row [0..3]
+;----------------------------------------------\
+[lcd_getcursorxy]
+$EXTERNAL Lcd_getdisplayaddr , Lcd_addr2xy
+Lcd_getcursorxy:
+ push R16
+ ; huidige adres opvragen in DD/CG-RAM
+ rcall LCD_GetDisplayAddr
+ rcall LCD_Addr2XY
+ pop R16
+ ret
+[end]
+;----------------------------------------------/
+
+
+
+
+
+
+
+
+
+
+;-----------------------------------------------
+;--- LCD_Delay_2us
+;----------------------------------------------\
+[lcd_delay_2us]
+Lcd_delay_2us:
+ ; tenminste 2us wachten
+ nop
+ nop
+ nop
+ nop
+ nop
+ nop
+ nop
+ nop
+ ret
+[end]
+;----------------------------------------------/
+
+;-----------------------------------------------
+;--- LCD_Delay_100us
+;--- (Geijkt op 4MHz)
+;----------------------------------------------\
+[lcd_delay_100us]
+Lcd_delay_100us:
+ push R16
+ ldi R16, 131
+Innerloop100us:
+ dec R16
+ brne innerloop100us
+ pop R16
+ ret
+[end]
+;----------------------------------------------/
+
+;-----------------------------------------------
+;--- LCD_Delay_15ms
+;--- (Geijkt op 4MHz)
+;----------------------------------------------\
+[lcd_delay_15ms]
+Lcd_delay_15ms:
+ push R16
+ ldi R16, 148
+Innerloop15ms:
+ rcall LCD_Delay_100us
+ dec R16
+ brne innerloop15ms
+ ldi R16, 115
+Innerloop15ms_:
+ dec R16
+ brne innerloop15ms_
+ nop
+ pop R16
+ ret
+[end]
+;----------------------------------------------/
+
+;-----------------------------------------------
+;--- LCD_Delay_4_1ms
+;--- (Geijkt op 4MHz)
+;----------------------------------------------\
+[lcd_delay_4_1ms]
+Lcd_delay_4_1ms:
+ push R16
+ ldi R16, 40
+Innerloop4_1ms:
+ rcall LCD_Delay_100us
+ dec R16
+ brne innerloop4_1ms
+ ldi R16, 92
+Innerloop4_1ms_:
+ dec R16
+ brne innerloop4_1ms_
+ nop
+ pop R16
+ ret
+[end]
+;----------------------------------------------/
+
+
+
+
+
+
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;!!!!! geëxporteerde Subs en Functions                     !!!!!
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+;---------------------------------------
+; Sub LCD_Initialize
+; Het LCD initialiseren voor gebruik.
+;--------------------------------------\
+[lcd_initialize]
+$EXTERNAL Lcd_init
+Lcd_initialize:
+ rcall LCD_Init
+ ret
+[end]
+;--------------------------------------/
+
+
+;---------------------------------------
+; Sub LCD_Put(ByteToSend as byte)
+; Een data-byte zenden.
+;--------------------------------------\
+[lcd_put]
+$EXTERNAL Lcd_data
+Lcd_put:
+ push R16
+ ; De waarde van argument ByteToSend in R16 plaatsen
+ ldd XL, Y+0   ; het adres van argument ByteToSend in register X
+ ldd XH, Y+1   ;
+ ld R16, X   ; De waarde van ByteToSend in R16
+ rcall LCD_Data  ; Data schrijven naar het LCD
+ pop R16
+ ret
+[end]
+;--------------------------------------/
+
+
+;---------------------------------------
+; Function LCD_Get() as byte
+; Een data-byte lezen.
+;--------------------------------------\
+[lcd_get]
+$EXTERNAL Lcd_read_data
+Lcd_get:
+ push R16
+ rcall LCD_Read_Data  ; Data lezen van het LCD
+ ; De resultaat van deze function (R16) teruggeven
+ ldd XL, Y+0   ; het adres van het resultaat in register X
+ ldd XH, Y+1   ;
+ st X, R16   ; het resultaat wegschrijven
+ pop R16
+ ret
+[end]
+;--------------------------------------/
+
+
+;---------------------------------------
+; Sub LCD_Cls
+; De LCD-inhoud wissen.
+;--------------------------------------\
+[lcd_cls]
+$EXTERNAL Lcd_clear
+Lcd_cls:
+ rcall Lcd_clear
+ ret
+[end]
+;--------------------------------------/
+
+
+;---------------------------------------
+; Sub LCD_CursorHome
+; De LCD-cursor op de beginpositie plaatsen.
+;--------------------------------------\
+[lcd_cursorhome]
+$EXTERNAL Lcd_home
+Lcd_cursorhome:
+ rcall Lcd_home
+ ret
+[end]
+;--------------------------------------/
+
+
+;---------------------------------------
+; Sub LCD_SetCursor(XX as Byte, YY as Byte)
+; De LCD-cursor plaatsen op (XX,YY).
+;--------------------------------------\
+[lcd_setcursor]
+$EXTERNAL Lcd_setcursorxy
+Lcd_setcursor:
+ push R17
+ push R18
+ ; De waarde van argument X in R17 plaatsen
+ ldd XL, Y+2 ; het adres van argument XX in register X
+ ldd XH, Y+3 ;
+ ld R17, X ; De waarde van XX in R17
+ ; De waarde van argument Y in R18 plaatsen
+ ldd XL, Y+0 ; het adres van argument YY in register X
+ ldd XH, Y+1 ;
+ ld R18, X ; De waarde van YY in R18
+ ; De cursorpositie instellen
+ rcall LCD_SetCursorXY
+ pop R18
+ pop R17
+ ret
+[end]
+;--------------------------------------/
+
+
+;---------------------------------------
+; Sub LCD_GetCursor(XX as Byte, YY as Byte)
+; De LCD-cursorpositie lezen en plaatsen in (XX,YY).
+;--------------------------------------\
+[lcd_getcursor]
+$EXTERNAL Lcd_getcursorxy
+Lcd_getcursor:
+ push R17
+ push R18
+ ; De cursorpositie lezen
+ rcall LCD_GetCursorXY
+ ; De X-positie in argument XX bewaren
+ ldd XL, Y+2 ; het adres van argument XX in register X
+ ldd XH, Y+3 ;
+ st X, R17
+ ; De Y-positie in argument YY bewaren
+ ldd XL, Y+0 ; het adres van argument YY in register X
+ ldd XH, Y+1 ;
+ st X, R18
+ pop R18
+ pop R17
+ ret
+[end]
+;--------------------------------------/

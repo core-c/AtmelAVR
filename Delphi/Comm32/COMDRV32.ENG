@@ -1,0 +1,725 @@
+
+ TCOMMPORTDRIVER (COMDRV32) PROGRAMMER'S REFERENCE                   © 1997 d3k
+--------------------------------------------------------------------------------
+
+
+
+                         T C O M M P O R T D R I V E R
+
+                               c o m p o n e n t
+
+                                (Unit COMDRV32)
+
+
+
+                               V1.02 05-JUN-1997
+
+
+
+                                  written by
+                                   M. Cocco
+
+
+
+                  © 1997 by Marco Cocco. All rights reserved.
+                     © 1997 by d3k. All rights reserved.
+
+
+                     Please send comments to d3k@mdnet.it
+                        URL: http://www.mdlive.com/d3k/
+
+
+ [ R E A D  T H I S  F I R S T ]
+
+ ******************************************************************************
+ *   Permission to use, copy,  modify, and distribute this software and its   *
+ *        documentation without fee for any purpose is hereby granted,        *
+ *   provided that the above copyright notice appears on all copies and that  *
+ *     both that copyright notice and this permission notice appear in all    *
+ *                         supporting documentation.                          *
+ *                                                                            *
+ *                      YOU MAY NOT SELL THIS SOFTWARE                        *
+ *                                                                            *
+ * NO REPRESENTATIONS ARE MADE ABOUT THE SUITABILITY OF THIS SOFTWARE FOR ANY *
+ *    PURPOSE.  IT IS PROVIDED "AS IS" WITHOUT EXPRESS OR IMPLIED WARRANTY.   *
+ *   NEITHER MARCO COCCO OR D3K SHALL BE LIABLE FOR ANY DAMAGES SUFFERED BY   *
+ *                          THE USE OF THIS SOFTWARE.                         *
+ ******************************************************************************
+
+ [ M O R E ]
+
+ I'd like any comments on this doc be posted to d3k@mdnet.it.
+ English is not my mother tongue, so if you find any error (and there are many,
+ I think) in this doc, please, let me know.
+
+ Also, if you add features to TCommPortDriver, please, let me know. I'll be
+ grateful to anybody will help me make TCommPortDriver bug-free, powerful and
+ still available for free.
+
+ I you are not a programming-guru and you need some extra features send me your
+ request. Please, ask only for general-purpose features that may be useful to
+ others.
+
+ If you are using this component, please let me know what are using it for.
+ This is only for reference. Remember that TCommPortDriver is FREEWARE and
+ you have full right to use it for commercial and non-commercial purposes.
+ You may not, of course, sell this component. You may only sell the program
+ using it.
+
+ Rights to distribuite this software as a part of CD-ROM file collections is
+ hereby granted. This license gives you the right to use and distribute this
+ software. By compiling, linking, modifying or distributing this library you
+ indicate that you accept all the terms in this license agreement.
+
+ [ G R E E T I N G S ]
+
+ Greetings to:
+
+ - Igor Gitman (gitman@interlog.com)
+   .COM1 bug (TCommPortDriver for Delphi 1.0 only)
+
+ - Anybody using this component
+
+ [ H I S T O R Y ]
+
+ V1.00/32 - 15-FEB-1997 : first implementation ( 32 BIT, Delphi 2.0 only ).
+                          Download COMDRV32.ZIP for the latest 32 BIT version.
+ V1.00/16 - 21-MAY-1997 : ported to 16 BIT ( Delphi 1.0 )
+ V1.01/32 - ??-MAY-1997 : some comments added
+ V1.02/32 - 05-JUN-1997 : new prc: SendZString( s:pchar )
+                          new prc: FlushBuffers( inFlg, outFlg: boolean )
+                          new prc: ToggleDTR( onOff: boolean )
+                          new prc: ToggleRTS( onOff: boolean )
+                          new prp: EnableDTROnOpen: boolean
+                          new prc: OutFreeSpace: word
+                          chg prc: SendData( DataPtr: pointer;
+                                             DataSize,
+                                             TimeOutMS: integer ): integer
+
+ [ C O M I N G  S O O N ]
+
+ V2.00/32 will add support for:
+   - Kermit protocol
+   - XModem protocol
+   - YModem protocol
+   - ZModem protocol
+
+ [ D E S C R I P T I O N ]
+
+ TCommPortDriver is a component for Borland Delphi 2.0 which encapsulates
+ the Win32 Communications functions.
+
+ [ F E A T U R E S ]
+
+ - supports COM1, COM2, COM3, COM4
+ - supports 110, 300, 600, 1200, 2400, 4800, 9600, 14400, 19200,
+   38400, 56000, 56700, 115200 bps
+ - 5, 6, 7, 8 data bits
+ - 1, 1.5, 2 stop bits
+ - none, even, odd, mark and space parity
+ - none, RTS/CTS, XON/XOFF, RTS/CTS + XON/XOFF flow control
+ - RTS and CTS line control
+ - asynchronous RX events
+ - variable TX/RX buffers size
+ - flush data into RX/TX buffers.
+
+ [ P R O P E R T I E S ]
+
+   [COMPORT]
+
+     <Declaration> ComPort: TComPortNumber
+     <Default>     pnCOM2;
+     <Published>   yes
+
+     <Description> The ComPort property determines which COM port the component
+                   connects to. These are the possible values:
+
+                   Value     Meaning
+                   -------------------------------------------------------------
+                   pnCOM1    COM1
+                   pnCOM2    COM2
+                   pnCOM3    COM3
+                   pnCOM4    COM4
+
+     <More info>   COM1 is usually used for serial mouses.
+                   COM2 is usually available.
+
+                   COM1 and COM3, COM2 and COM4 usually share the same IRQ:
+                   you cannot safely use concurrently COM1 and COM3, COM2
+                   and COM4 due to this limitation.
+
+                   (Your PC must have Extended Industry Standard Architecture
+                    (EISA) or Micro Channel(R) Architecture (MCA), or you must
+                    have a serial I/O card that supports IRQ sharing to safely
+                    use COM ports concurrently)
+
+                   You cannot change the ComPort value while connected. You
+                   must disconnect, change the ComPort value and then
+                   reconnect.
+
+   [COMPORTSPEED]
+
+     <Declaration> ComPortSpeed: TComPortSpeed
+     <Default>     br9600
+     <Published>   yes
+
+     <Description> The ComPortSpeed property determines the speed (bauds) of
+                   the COM port. These are the possible values:
+
+                   Value     Meaning
+                   -------------------------------------------------------------
+                   br110     110 bauds
+                   br300     300 bauds
+                   br600     600 bauds
+                   br1200    1200 bauds
+                   br2400    2400 bauds
+                   br4800    4800 bauds
+                   br9600    9600 bauds
+                   br14400   14400 bauds
+                   br19200   19200 bauds
+                   br38400   38400 bauds
+                   br56000   56000 bauds
+                   br57600   57600 bauds
+                   br115200  115200 bauds
+
+     <More info>   Your PC is capable of serial transmission at up to 115200
+                   bauds.
+                   Note that some serial ports have difficulties with high
+                   baud rates (usually 8250 UARTS).
+
+                   You can change the ComPortSpeed value while connected.
+
+   [COMPORTDATABITS]
+
+     <Declaration> ComPortDataBits: TComPortDataBits
+     <Default>     db8BITS
+     <Published>   yes
+
+     <Description> The ComPortDataBits property determines the size of the
+                   data words you can send and receive using the COM port.
+                   These are the possible values:
+
+                   Value     Meaning
+                   -------------------------------------------------------------
+                   db5BITS   5 bits
+                   db6BITS   6 bits
+                   db7BITS   7 bits
+                   db8BITS   8 bits
+
+     <More info>   For the 8250 UART the use of 5 data bits with 2 stop bits is
+                   an invalid combination, as is 6, 7, or 8 data bits with 1.5
+                   stop bits.
+
+                   You can change the ComPortDataBits value while connected.
+
+   [COMPORTSTOPBITS]
+
+     <Declaration> ComPortStopBits: TComPortStopBits
+     <Default>     sb1BITS
+     <Published>   yes
+
+     <Description> The ComPortStopBits property determines the number of stop
+                   bits after each data word transmitted/received using the
+                   COM port.
+                   The stop bit does not indicate the end of the data word.
+                   It separates two consecutive data words by putting the
+                   line into the 'mark' state for a time in order for the
+                   next start bit to be clearly readable.
+                   These are the possible values:
+
+                   Value          Meaning
+                   -------------------------------------------------------------
+                   sb1BITS        1 stop bit
+                   sb1HALFBITS    1.5 stop bits
+                   sb2BITS        2 stop bits
+
+     <More info>   For the 8250 UART the use of 5 data bits with 2 stop bits is
+                   an invalid combination, as is 6, 7, or 8 data bits with 1.5
+                   stop bits.
+
+                   You can change the ComPortStopBits value while connected.
+
+   [COMPORTPARITY]
+
+     <Declaration> ComPortParity: TComPortParity
+     <Default>     ptNONE
+     <Published>   yes
+
+     <Description> The ComPortParity property determines the king of parity
+                   to use when transmitting and to expect when receiving data.
+                   These are the possible values:
+
+                   Value          Meaning
+                   -------------------------------------------------------------
+                   ptNONE         (disable parity)
+                   ptODD          odd parity
+                   ptEVEN         even parity
+                   ptMARK         mark parity
+                   ptSPACE        space parity
+
+     <More info>   A parity bit can be added to the data bits to allow error
+                   detection. There are four kinds of parity: odd, even, mark
+                   and space.
+                   Odd parity means that the number of 'low' ('mark') steps in
+                   the data word is always odd, so the parity bit is set
+                   accordingly.
+                   Even parity means that the number of 'low' ('mark') steps in
+                   the data word is always even, so the parity bit is set
+                   accordingly.
+                   Mark parity means that the parity bit is to the 'mark' fixed
+                   state.
+                   Space parity means that the parity bit is to the 'space'
+                   fixed state.
+                   None parity means that the parity bit isn't used.
+
+                   You can change the ComPortParity value while connected.
+
+   [COMPORTHWHANDSHAKING]
+
+     <Declaration> ComPortHwHandshaking: TComPortHwHandshaking
+     <Default>     hhNONE
+     <Published>   yes
+
+     <Description> The ComPortHwHandshaking property determines which type of
+                   hardware handshaking to use.
+                   These are the possible values:
+
+                   Value     Meaning
+                   -------------------------------------------------------------
+                   hhNONE    disables hardware handshaking
+                   hhRTSCTS  enables RTS/CTR hardware handshaking
+
+     <More info>   Handshaking is the method of exchanging signals for data
+                   flow control between computers and data sets.
+
+                   RTS and CTS signals have been specially designed for data
+                   flow control. The computer signals with RTS
+                   ('Request To Send') that it wishes to send data to the
+                   data set, while the data set (modem) sets CTS
+                   ('Clear To Send') when it is ready to receive the data.
+                   The same occurs when the data set has data to send to
+                   the computer.
+
+                   You can change the ComPortParity value while connected.
+
+   [COMPORTSWHANDSHAKING]
+
+     <Declaration> ComPortSwHandshaking: TComPortSwHandshaking
+     <Default>     shNONE
+     <Published>   yes
+
+     <Description> The ComPortSwHandshaking property determines which type of
+                   software handshaking to use.
+                   These are the possible values:
+
+                   Value        Meaning
+                   -------------------------------------------------------------
+                   shNONE       disables software handshaking
+                   shshXONXOFF  enables XON/XOFF hardware handshaking
+
+     <More info>   Handshaking is the method of exchanging signals for data
+                   flow control between computers and data sets.
+
+                   XON/XOFF handshaking uses two special characters:
+                   the XON character (DC1, Ctrl-Q, ASCII 17) and the XOFF
+                   character (DC3, Ctrl-S, ASCII 19).
+                   When the data set wants to interrupt the data flow from
+                   the computer, it sends an XOFF ('Transmission Off').
+                   When its buffers have been emptied, it sends an XON
+                   ('Transmission On') to signal that data can be sent again.
+                   The same occurs when the computer is controlling the incoming
+                   data from the data set.
+
+                   (With some implementations, XON e XOFF can be any character).
+
+                   XON/XOFF is of course limited to text transmission.
+                   It cannot be used with binary data since binary files may
+                   contain XON/XOFF characters that will be interpreded as
+                   handshaking characters and a data loss may occur.
+
+                   You can change the ComPortSwHandshaking value while
+                   connected.
+
+   [COMPORTINBUFSIZE]
+
+     <Declaration> ComPortInBufSize: word
+     <Default>     2048 bytes
+     <Published>   yes
+
+     <Description> The ComPortInBufSize property determines the size of the
+                   buffer used to store incoming data.
+
+     <More info>   The larger is the input buffer the more data can be buffered.
+                   The larger is the input buffer the slower can be set the
+                   polling timer.
+
+                   Never set the input buffer size less than (aprox):
+
+                      bps / (data bits + stop bits + 2) * polling delay / 1000.
+
+                   Setting the input buffer size at a value less than that value
+                   may determine a data loss.
+
+                   You cannot change the ComPortInBufSize value while connected.
+
+   [COMPORTOUTBUFSIZE]
+
+     <Declaration> ComPortOutBufSize: word
+     <Default>     2048 bytes
+     <Published>   yes
+
+     <Description> The ComPortOutBufSize property determines the size of the
+                   buffer used to store outcoming data.
+
+     <More info>   You cannot change the ComPortOutBufSize value while
+                   connected.
+
+   [COMPORTPOLLINGDELAY]
+
+     <Declaration> ComPortPollingDelay: word
+     <Default>     50 ms (0.05 seconds, 20 times per second)
+     <Published>   yes
+
+     <Description> The ComPortPollingDelay property determines the delay (in
+                   1/1000 of a second) to wait before checking for incoming
+                   data from the COM port.
+
+     <More info>   The smaller is the delay the more times the COM port will
+                   be checked for incoming data.
+                   Never set the delay too small, especially on slow systems.
+                   Never set the delay too high, especially if using high
+                   baud rates.
+
+                   You can change the ComPortPollingDelay value while connected.
+
+   [ENABLEDTRONOPEN]
+
+     <Declaration> EnableDTROnOpen: boolean
+     <Default>     true
+     <Published>   yes
+
+     <Description> The EnableDTROnOpen property determines if the DTR line
+                   ('Data Terminal Ready') is to be set to a 'high' state when
+                   the COM port is opened (that is, when you call Connect).
+
+     <More info>   DTR is used to establish a connection at the very beginning,
+                   ie. the PC and the data set 'shake hands' first to assure
+                   they are both present. The PC sets DTR to 'high', and the
+                   data set answers with DSR 'high'. The DSR is the DTR signal
+                   coming from the data set.
+                   Modems often indicate hang-up by resetting DSR to 'low' (and
+                   sometimes hang up if DTR goes low).
+
+                   You cannot change the EnableDTROnOpen value while connected.
+
+   [COMPORTHANDLE]
+
+     <Declaration> ComPortHandle: integer
+     <Default>     0 (not connected)
+     <Published>   no (run-time only, read/write)
+
+     <Description> The ComPortHandle property value is the handle returned by
+                   the system to indicate the COM port the component is using.
+                   You need this value with some API calls (TAPI and others).
+
+     <More info>   You can set the ComPortHandle property value to a handle of a
+                   open COM port forcing the TCommPortDriver to send/receive
+                   data by/from that port.
+
+                   This is useful is you opened the COM port by yourself and
+                   you want to pass the control of that port to the
+                   TCommPortDriver component.
+
+                   Setting ComPortHandle to zero acts like the Disconnect method
+                   is called (that is the COM port will be closed).
+
+                   If you want the TCommPortDriver to stop controlling the
+                   COM port (without closing it) set the ComPortHandle to
+                   $FFFFFFFF.
+                   Reading again the ComPortHandle will return 0 (disconnected):
+                   you must store the handle in a variable to use it after the
+                   TCommPortDriver stopped using that COM port.
+
+                   You can change the ComPortHandle property value while
+                   connected.
+
+ [ M E T H O D S ]
+
+   [CREATE]
+
+     <Declaration> constructor Create( AOwner: TComponent )
+
+     <Description> The Create method allocates memory to create the component
+                   and initializes its data as needed. The owner of the created
+                   component is passed in the AOwner parameter.
+                   Usually you don't need to create objects manually. Objects
+                   you design in Delphi are automatically created for you when
+                   you run the application and destroyed when you close the
+                   application.
+                   If you construct a component by calling Create, and give it
+                   an owner, the owner disposes of the component when the owner
+                   is destroyed. If you don't want another component to own the
+                   created component, pass Self in the AOwner parameter.
+
+     <Result>      -
+
+     <More info>   The Create method initializes the object properties to
+                   default values. These are the default values:
+
+                   Property/Event            Default value
+                   -------------------------------------------------------------
+                   ComPort                   pnCOM2
+                   ComPortHandle             0 (not connected)
+                   ComPortBaudRate           br9600
+                   ComPortDataBits           db8BITS
+                   FComPortStopBits          sb1BITS
+                   FComPortParity            ptNONE
+                   FComPortHwHandshaking     hhNONE
+                   FComPortSwHandshaking     shNONE
+                   FComPortInBufSize         2048 (bytes)
+                   FComPortOutBufSize        2048 (bytes)
+                   FComPortPollingDelay      50 (ms)
+                   FEnableDTROnOpen          true
+
+                   FComPortReceiveData       nil
+
+                   If you changed any value at design-time then the new value
+                   will automatically reloaded for you by the VCL stream
+                   handlers.
+
+   [FREE]
+
+     <Declaration> procedure Free
+
+     <Description> The Free method destroys the object, frees its associated
+                   memory and closes any open COM port.
+                   If you created the object yourself using the Create method,
+                   you should use Free to destroy and release memory.
+                   Free is successful even if the object is nil, so if the
+                   object was never initialized, for example, calling Free
+                   won't result in an error.
+                   Delphi automatically destroys Visual Component Library
+                   objects and frees memory allocated to them.
+                   You should never explicitly free a component within one of
+                   its own event handlers, nor should you free a component from
+                   an event handler of a component the component owns or
+                   contains.
+
+     <Result>      -
+
+     <More info>   If you need to free the object without closing the COM port,
+                   set ComPortHandle to $FFFFFFFF then call Free.
+                   Be sure to save the ComPortHandle value before setting it to
+                   $FFFFFFFF. You will need the original value to close the COM
+                   port yourself.
+
+   [CONNECT]
+
+     <Declaration> function Connect: boolean
+
+     <Description> The Connect method opens the COM port and starts polling
+                   it for incoming data.
+
+     <Result>      TRUE : the COM port opened successfully
+                   FALSE: the COM port doen't not exist, or it is already
+                          in use or an unexpected error as occurred.
+
+     <More info>   When you call Connect, the component will setup a timer
+                   which will poll the COM port for incoming data.
+                   If one or more data bytes are in the RX buffer then a
+                   OnReceiveData event will be raised.
+                   By default the COM port will be checked for incoming data
+                   at a rate of 50 times per second, whatever is the speed.
+                   You can change the number of times the COM port will be
+                   polled by writing a time delay (milliseconds) to the
+                   ComPortPollingDelay property.
+                   For example if you setup a 100ms delay, the COM port will
+                   be checked for incoming data at a rate of 1000/100 = 10
+                   times per second.
+
+   [DISCONNECT]
+
+     <Declaration> procedure Disconnect
+
+     <Description> The Disconnect method closes the COM port and stops polling.
+                   If the COM port has never been opened, then it does nothing.
+                   After the COM port has been closed it will be available
+                   to other applications.
+
+     <Result>      -
+
+     <More info>   If you want the TCommPortDriver to stop controlling the
+                   COM port without closing the COM port, set ComPortHandle to
+                   $FFFFFFFF. Don't call Disconnect.
+                   Be sure to save the ComPortHandle value before setting it to
+                   $FFFFFFFF. You will need the original value to close the COM
+                   port yourself.
+
+   [CONNECTED]
+
+     <Declaration> function Connected: boolean
+
+     <Description> The Connected method returns a flag indicating the component
+                   is or isn't controlling a COM port.
+
+     <Result>      TRUE : the component is controlling a (connected to) COM port
+                   FALSE: the component is not controlling a COM port
+
+     <More info>   Calling Connected is the same as checking for
+                   'ComPortHandle = 0'.
+
+   [FLUSHBUFFERS]
+
+     <Declaration> procedure FlushBuffers( inBuf, outBuf: boolean );
+
+     <Description> The FlushBuffers method flushes (discards) any data in
+                   the input and/or in the output buffers.
+
+                   These are the possible values of inBuf and outBuf parameters:
+
+                   inBuf     outBuf      Description
+                   -------------------------------------------------------------
+                   FALSE     FALSE       do nothing
+                   FALSE     TRUE        output buffer data is discarded
+                   TRUE      FALSE       input buffer data is discarded
+                   TRUE      TRUE        input and output data is discarded
+
+     <Result>      -
+
+     <More info>   -
+
+   [SENDDATA]
+
+     <Declaration> function SendData( DataPtr: pointer;
+                                      DataSize: integer ): integer
+
+     <Description> The SendData method sends a block of memory (DataPtr) of
+                   DataSize bytes to the output buffer.
+                   If the block is larger than the available free space in the
+                   output buffer, it breaks the data block in smaller blocks
+                   and sends them one at time.
+                   The OutputTimeout defines how long the method must wait for
+                   a small packet to be copied to and sent out from the output
+                   buffer (milliseconds).
+
+     <Result>      0 (zero): - the COM port is not open
+                             - or: DataSize is zero
+                             - or: no data has been sent due to the output
+                                   buffer is full and timeout occurred
+                   = DataSize: all data sent (or almost all data sent: may be
+                               some bytes are waiting in the output buffer)
+                   < 0: not all data sent due to a timeout. abs(Result) is the
+                        number of bytes sent (some byte may be waiting in the
+                        output buffer).
+
+   [OUTFREESPACE]
+
+     <Declaration> function OutFreeSpace: word;
+
+     <Description> The OutFreeSpace method returns the number of free bytes
+                   available in the output data buffer.
+
+     <Result>      Number of bytes available in the output data buffer.
+
+     <More info>   You can increase the size of the output data buffer by
+                   assign the new size value to the ComPortOutBufSize property.
+                   To empty (flush) the output buffer use FlushBuffers().
+
+   [SENDSTRING]
+
+     <Declaration> function SendString( s: string ): boolean
+
+     <Description> The SendString method sends a string (Pascal style) to the
+                   COM port. See SendData for timeout considerations.
+
+     <Result>      TRUE : the string sent (or copied to the output buffer)
+                   FALSE: - the COM port has not been opened
+                          - or: not all the data has been sent due to a timeout
+
+     <More info>   -
+
+   [SENDZSTRING]
+
+     <Declaration> function SendZString( s: pchar ): boolean
+
+     <Description> The SendZString method sends a string (NULL terminated) to
+                   the COM port. See SendData for timeout considerations.
+
+     <Result>      TRUE : the string sent (or copied to the output buffer)
+                   FALSE: - the COM port has not been opened
+                          - or: not all the data has been sent due to a timeout
+
+     <More info>   Calling SendZString( zstr ) is the same as calling
+                   SendData( zstr, strlen(zstr) ).
+
+   [TOGGLEDTR]
+
+     <Declaration> procedure ToggleDTR( onOff: boolean )
+
+     <Description> The ToggleDTR method toggles the state of the DTR ('Data
+                   Terminal Ready') line of the COM port.
+                   These are the possible values of onOff:
+
+                   OnOff        Meaning
+                   -------------------------------------------------------------
+                   TRUE         set the DTR line to HIGH ('space' level)
+                   FALSE        set the DTR line to LOW ('mark' level)
+
+     <Result>      -
+
+     <More info>   -
+
+   [TOGGLERTS]
+
+     <Declaration> procedure ToggleRTS( onOff: boolean )
+
+     <Description> The ToggleRTS method toggles the state of the RTS ('Request
+                   To Send') line of the COM port.
+                   These are the possible values of onOff:
+
+                   OnOff        Meaning
+                   -------------------------------------------------------------
+                   TRUE         set the RTS line to HIGH ('space' level)
+                   FALSE        set the RTS line to LOW ('mark' level)
+
+     <Result>      -
+
+     <More info>   Never use ToggleRTS if the RTS/CTS handshaking has been
+                   enabled.
+
+
+ [ E V E N T S ]
+
+   [ONRECEIVEDATA]
+
+     <Declaration> property OnReceiveData: TComPortReceiveDataEvent
+     <Handler>     TComPortReceiveDataEvent =
+                      procedure( Sender: TObject; DataPtr: pointer;
+                                 DataSize: integer ) of object
+     <Published>   yes
+
+     <Description> The OnReceiveData event occurs when there is data available
+                   in the input data buffer.
+                   This event my occur at any time (if the COM port has been
+                   opened).
+
+                   Whatever or not you have coded your OnReceiveData event
+                   handler, the incoming data is removed from the primary input
+                   buffer making space for new incoming data.
+
+                   The DataPtr parameter contains the address of a temporary
+                   buffer and the DataSize parameter contains the number of
+                   bytes copied in the temporary buffer. The first data byte
+                   if a address DataPtr, the second at DataPtr+1, and so on.
+
+     <Result>      -
+
+     <More info>   The data is copied from the primary input data buffer to the
+                   temporary data buffer and then the OnReceiveData is called.
+                   After the OnReceiveData event has been called, the temporary
+                   data buffer is emptied. If you don't provide for a
+                   OnReceiveData event handler, all incoming data is of course
+                   discarded.
+
+
+

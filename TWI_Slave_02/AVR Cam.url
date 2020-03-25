@@ -1,0 +1,8 @@
+[DEFAULT]
+BASEURL=http://82.199.156.218:8080/
+[DOC#3#5]
+BASEURL=http://82.199.156.218:8080/entry.php
+ORIGURL=entry.php
+[InternetShortcut]
+URL=http://82.199.156.218:8080/
+Modified=E0EFC119199DC40124

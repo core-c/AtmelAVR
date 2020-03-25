@@ -1,0 +1,29 @@
+
+
+om een poort (D) als input te schakelen:
+	ldi temp, 0
+	out DDRD, temp
+
+
+
+
+om een poort (D) als input te schakelen met inschakelen van de interne pull-up weerstanden:
+	ldi temp, 0		; alle pins als input....
+	out DDRD, temp
+	ldi temp, 0b11111111	; ....alle pins met interne pull-ups
+	out PORTD, temp
+
+	ldi temp, 0b11110011	; pins 2..3 als input met interne pull-ups, de rest als output
+	out DDRD, temp
+	ldi temp, 0b00001100
+	out PORTD, temp
+
+
+om een poort (D) als output te schakelen:
+	ldi temp, 0b11111111
+	out DDRD, temp		; alle pins als output
+
+	ldi temp, 0b00000111
+	out DDRD, temp		; alleen bits 0..2 als output, bits 7..3 als input
+
+
