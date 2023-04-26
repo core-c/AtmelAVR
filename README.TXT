@@ -1,19 +1,23 @@
-
+-------------------------------------------------------------
+ The _include_ folder contains the library files.
+ All code are written in AVR assembler.
+ Most of the comments in code are in the dutch language. :-S
+-------------------------------------------------------------
 
 test01	-	10 bit PWM. 16-bit timer1 met Overflow- & Compare-Interrupts.
 test02	-	8 bit PWM. 16-bit timer1 met Overflow- & Compare-Interrupts.
 test03	-	losse UART implementatie voor een 7.3728MHz clock en een 19200 buadrate
 test04	-	een UART implementatie (7.3728MHz clock, 19200 baud)
-		mèt (via UART instelbaar) 8-bit PWM
+		mÃ¨t (via UART instelbaar) 8-bit PWM
 test05	-	een UART implementatie (7.324MHz clock, 19200 baud)
-		mèt (via UART instelbaar) 8-bit PWM
-		èn  een externe IRQ0 implementatie   (updated)
+		mÃ¨t (via UART instelbaar) 8-bit PWM
+		Ã¨n  een externe IRQ0 implementatie   (updated)
 
 test06	-	Een 4-bit LCD-Display aansturing
 test06-8	Een 8-bit LCD-Display aansturing
 TEST06-8-2	Een 8-bit LCD-Display aansturing
-		èn  zelf-gedefinieerde tekens afbeelden
-		èn  ADC-samples als meter afbeelden op ADC
+		Ã¨n  zelf-gedefinieerde tekens afbeelden
+		Ã¨n  ADC-samples als meter afbeelden op ADC
 
 test07	-	Een software-matige 2- tm 16-bits PWM generator		(y)
 test08	-	Een hardware-matige  8-bits PWM  op de 16-bits Timer1	(y)
@@ -25,38 +29,38 @@ test14	-	Een hardware-matige  8-bits PWM  op de 8-bits Timer2
 
 test15	-	Een dimmende LED demo
 test20	-	Een dimmende LED demo 
-		mèt  een schakelaar om de timer te stoppen/starten.
+		mÃ¨t  een schakelaar om de timer te stoppen/starten.
 test21	-	Een dimmende LED's demo voor 3 LED's
-		mèt  2 HW-PWM's op Timer1
-		èn  1 SW-PWM op Timer2
-		mèt  een schakelaar om de dimmer te pauzeren/starten.
+		mÃ¨t  2 HW-PWM's op Timer1
+		Ã¨n  1 SW-PWM op Timer2
+		mÃ¨t  een schakelaar om de dimmer te pauzeren/starten.
 
 test25	-	Een AT-Keyboard implementatie
-		mèt  variabelen in SRAM
-		èn  locale labels in een macro/subroutine
+		mÃ¨t  variabelen in SRAM
+		Ã¨n  locale labels in een macro/subroutine
 test25_2	zoals test25...
-		mèt  scancode buffer èn ASCII-code buffer in SRAM
-		èn  interrupt-handler tijdsduur-uitvoer korter gemaakt (decoderen scancodes gebeurt nu buiten de handler; Zelfs goed bij lagere CK)
-		èn  LED (knipperend tijdens init, daarna continue aan)
+		mÃ¨t  scancode buffer Ã¨n ASCII-code buffer in SRAM
+		Ã¨n  interrupt-handler tijdsduur-uitvoer korter gemaakt (decoderen scancodes gebeurt nu buiten de handler; Zelfs goed bij lagere CK)
+		Ã¨n  LED (knipperend tijdens init, daarna continue aan)
 
 test26	-	3 HW PWM's
-		èn  PWM-DutyCycle instelbaar via PC-COMPort
+		Ã¨n  PWM-DutyCycle instelbaar via PC-COMPort
 
 test30	-	3 HW PWM's
-		èn   PWM-DutyCycle instelbaar via PC-COMPort input
-		èn   ADC input schrijven naar PC-COMPort
+		Ã¨n   PWM-DutyCycle instelbaar via PC-COMPort input
+		Ã¨n   ADC input schrijven naar PC-COMPort
 		met  roterende invoerbuffer voor RS232
 test31	-	3 HW PWM's
-		èn  PWM-DutyCycle instelbaar via PC-COMPort input
-		èn  ADC input schrijven naar PC-COMPort
+		Ã¨n  PWM-DutyCycle instelbaar via PC-COMPort input
+		Ã¨n  ADC input schrijven naar PC-COMPort
 		met  roterende invoerbuffer voor RS232
-		èn  TimerCounter0 als PostScaler in gebruik (op 10Hz precíes)
+		Ã¨n  TimerCounter0 als PostScaler in gebruik (op 10Hz precÃ­es)
 
 test40	-	Een servo aansturing.
 		1ms tot 2ms durende pulzen
 
 test50	-	Een RC-ontvanger test
-		mèt  ICP (Input Capture Pin) om servo input te timen
+		mÃ¨t  ICP (Input Capture Pin) om servo input te timen
 test51	-	Een RC-ontvanger test 2
 
 
